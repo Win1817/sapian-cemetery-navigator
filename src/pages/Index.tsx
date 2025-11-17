@@ -7,6 +7,7 @@ import CemeteryMap from "@/components/map/CemeteryMap";
 import SearchBar from "@/components/map/SearchBar";
 import { Leaf, MapPin, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
 interface Grave {
   id: string;
   grave_name: string;
@@ -18,35 +19,48 @@ interface Grave {
   date_of_death?: string;
   additional_info?: string;
 }
+
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const [selectedGrave, setSelectedGrave] = useState<Grave | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [locationEnabled, setLocationEnabled] = useState(false);
-  // On mount: check user & request location
+
+  /* Initialize auth + location */
   useEffect(() => {
     checkUser();
     requestLocation();
   }, []);
+
+  /* Checks logged-in user */
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
+
     if (session) {
       setUser(session.user);
       checkAdminStatus(session.user.id);
     }
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        checkAdminStatus(session.user.id);
-      } else {
-        setIsAdmin(false);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          checkAdminStatus(session.user.id);
+        } else {
+          setIsAdmin(false);
+        }
       }
-    });
+    );
+
     return () => subscription.unsubscribe();
   };
+
+  /* Check if logged-in user is admin */
   const checkAdminStatus = async (userId: string) => {
     const { data: roles } = await supabase
       .from("user_roles")
@@ -54,8 +68,11 @@ const Index = () => {
       .eq("user_id", userId)
       .eq("role", "admin")
       .maybeSingle();
+
     setIsAdmin(!!roles);
   };
+
+  /* Request browser location */
   const requestLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -69,11 +86,11 @@ const Index = () => {
             className: "z-[70]",
           });
         },
-        (error) => {
+        () => {
           setLocationEnabled(false);
           toast({
             title: "Location access denied",
-            description: "You can manually set your start point by clicking the button on the map.",
+            description: "You can manually set your start point on the map.",
             variant: "destructive",
             duration: 4000,
             className: "z-[70]",
@@ -82,69 +99,97 @@ const Index = () => {
       );
     }
   };
+
   const handleStartPointSelected = (location: [number, number]) => {
     setUserLocation(location);
   };
+
   const handleSelectGrave = (grave: Grave) => {
     setSelectedGrave(grave);
   };
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-      {/* Enhanced Background */}
+
+      {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
-        {/* Subtle overlay pattern */}
         <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.1) 1px, transparent 0)`,
-            backgroundSize: '50px 50px',
-          }} />
-        </div>
-        {/* Floating leaf elements for theme */}
-        <div className="absolute top-20 left-10 w-12 h-12 text-emerald-200 opacity-30 animate-pulse">
-          <Leaf className="w-full h-full" />
-        </div>
-        <div className="absolute bottom-32 right-20 w-16 h-16 text-green-200 opacity-20 rotate-12">
-          <Leaf className="w-full h-full" />
-        </div>
-        <div className="absolute top-1/2 left-1/4 w-8 h-8 text-teal-200 opacity-25 -rotate-6">
-          <Leaf className="w-full h-full" />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                `radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.1) 1px, transparent 0)`,
+              backgroundSize: "50px 50px",
+            }}
+          />
         </div>
       </div>
-      {/* Header */}
-      <header className="bg-card shadow-soft border-b z-20 relative">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+
+      {/* HEADER — FIXED */}
+      <header className="bg-card shadow-soft border-b z-20 relative w-full">
+        <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+          {/* Left Title Section */}
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-              <Leaf className="w-6 h-6 text-primary-foreground" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
+              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
             </div>
-            <div>
-              <h1 className="text-2xl font-serif font-bold">Sapian Cemetery</h1>
-              <p className="text-sm text-muted-foreground">Navigation & Grave Locator</p>
+
+            <div className="leading-tight">
+              <h1 className="text-xl sm:text-2xl font-serif font-bold">Sapian Cemetery</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Navigation & Grave Locator
+              </p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+
+          {/* Right Buttons Section */}
+          <div className="flex items-center space-x-2 justify-end">
+
+            {/* ADMIN BUTTON */}
             {isAdmin && (
-              <Button onClick={() => navigate("/admin")} variant="outline" size="sm" className="hover:bg-[#5D866C] hover:text-white">
+              <Button
+                onClick={() => navigate("/admin")}
+                variant="outline"
+                size="sm"
+                className="hover:bg-[#5D866C] hover:text-white border border-primary/40 flex items-center"
+              >
                 <Settings className="w-4 h-4 mr-2" />
-                Admin
+                Administrator
               </Button>
             )}
+
+            {/* SIGN OUT / SIGN IN — matching admin button style */}
             {user ? (
-              <Button onClick={() => supabase.auth.signOut()} variant="ghost" size="sm" className="hover:bg-[#5D866C] hover:text-white">
+              <Button
+                onClick={() => supabase.auth.signOut()}
+                variant="outline"
+                size="sm"
+                className="hover:bg-[#5D866C] hover:text-white border border-primary/40"
+              >
                 Sign Out
               </Button>
             ) : (
-              <Button onClick={() => navigate("/auth")} variant="default" size="sm" className="hover:bg-[#5D866C] hover:text-white">
+              <Button
+                onClick={() => navigate("/auth")}
+                variant="outline"
+                size="sm"
+                className="hover:bg-[#5D866C] hover:text-white border border-primary/40"
+              >
                 Sign In
               </Button>
             )}
           </div>
         </div>
       </header>
-      {/* Main Content */}
+
+      {/* MAIN CONTENT */}
       <main className="flex-1 container mx-auto px-4 py-6 relative z-10">
+
+        {/* SEARCH + LOCATION STATUS */}
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SearchBar onSelectGrave={handleSelectGrave} />
+
           <div className="flex items-center space-x-2">
             {locationEnabled && (
               <div className="flex items-center space-x-1 px-3 py-1 bg-primary/10 rounded-full">
@@ -152,15 +197,22 @@ const Index = () => {
                 <span className="text-xs font-medium text-primary">Location Active</span>
               </div>
             )}
+
             {!userLocation && (
-              <Button onClick={requestLocation} variant="outline" size="sm" className="shadow-soft hover:bg-[#5D866C] hover:text-white">
+              <Button
+                onClick={requestLocation}
+                variant="outline"
+                size="sm"
+                className="shadow-soft hover:bg-[#5D866C] hover:text-white"
+              >
                 <MapPin className="w-4 h-4 mr-2" />
                 Enable Location
               </Button>
             )}
           </div>
         </div>
-        {/* Map */}
+
+        {/* MAP */}
         <div className="h-[calc(100vh-220px)] rounded-lg overflow-hidden shadow-medium border border-border/50 relative z-0">
           <CemeteryMap
             selectedGrave={selectedGrave}
@@ -169,16 +221,19 @@ const Index = () => {
             onStartPointSelected={handleStartPointSelected}
           />
         </div>
-        {/* Selected Grave Info */}
+
+        {/* SELECTED GRAVE DETAILS */}
         {selectedGrave && (
           <div className="mt-4 bg-card p-4 rounded-lg shadow-soft">
             <h3 className="font-serif font-bold text-lg mb-2">{selectedGrave.grave_name}</h3>
+
             {selectedGrave.date_of_birth && selectedGrave.date_of_death && (
               <p className="text-sm text-muted-foreground mb-2">
-                {new Date(selectedGrave.date_of_birth).getFullYear()} -{" "}
+                {new Date(selectedGrave.date_of_birth).getFullYear()} –{" "}
                 {new Date(selectedGrave.date_of_death).getFullYear()}
               </p>
             )}
+
             {selectedGrave.additional_info && (
               <p className="text-sm">{selectedGrave.additional_info}</p>
             )}
@@ -188,4 +243,5 @@ const Index = () => {
     </div>
   );
 };
+
 export default Index;

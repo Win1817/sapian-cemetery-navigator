@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, MapPin, Calendar, Image } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,8 +95,8 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
     const now = new Date();
     const diffMs = now.getTime() - deathDate.getTime();
     const diffYears = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 365.25));
-    const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44)) % 12;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) % 30;
+    const diffMonths = Math.floor((diffMs % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30.44));
+    const diffDays = Math.floor((diffMs % (1000 * 60 * 60 * 24 * 30.44)) / (1000 * 60 * 60 * 24));
     return `${diffYears}y ${diffMonths}m ${diffDays}d`;
   };
 
@@ -115,17 +115,18 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
           placeholder="Search graves by name..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full"
         />
         <p className="text-sm text-muted-foreground mt-1">
           Showing {filteredGraves.length} of {graves.length} graves
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredGraves.map((grave) => (
-          <Card key={grave.id} className="p-4 shadow-soft hover:shadow-medium transition-shadow">
+          <Card key={grave.id} className="p-3 sm:p-4 shadow-soft hover:shadow-medium transition-shadow overflow-hidden">
             <div
-              className="relative w-full h-48 mb-3 rounded-md overflow-hidden bg-gray-100 cursor-pointer"
+              className="relative w-full h-32 sm:h-48 mb-2 sm:mb-3 rounded-md overflow-hidden bg-gray-100 cursor-pointer"
               onClick={() => handleGraveClick(grave)}
             >
               {grave.grave_image_url ? (
@@ -135,31 +136,42 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                  No Image
+                <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs sm:text-sm">
+                  <Image className="w-6 h-6 mr-1" /> No Image
                 </div>
               )}
             </div>
 
             <h3
-              className="font-serif font-bold text-lg mb-2 cursor-pointer hover:text-primary transition-colors"
+              className="font-serif font-bold text-base sm:text-lg mb-1 sm:mb-2 cursor-pointer hover:text-primary transition-colors line-clamp-1"
               onClick={() => handleGraveClick(grave)}
             >
               {grave.grave_name}
             </h3>
 
-            <div className="text-sm text-muted-foreground mb-2 space-y-1">
-              <p>DOB: {grave.date_of_birth ? new Date(grave.date_of_birth).toLocaleDateString() : "-"}</p>
-              <p>DOD: {grave.date_of_death ? new Date(grave.date_of_death).toLocaleDateString() : "-"}</p>
-              <p>Location: {grave.latitude?.toFixed(5)}, {grave.longitude?.toFixed(5)}</p>
+            <div className="text-xs sm:text-sm text-muted-foreground mb-2 space-y-1">
+              <div className="flex items-center space-x-1">
+                <Calendar className="w-3 h-3" />
+                <p>DOB: {grave.date_of_birth ? new Date(grave.date_of_birth).toLocaleDateString() : "-"}</p>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Calendar className="w-3 h-3" />
+                <p>DOD: {grave.date_of_death ? new Date(grave.date_of_death).toLocaleDateString() : "-"}</p>
+              </div>
+              <div className="flex items-center space-x-1">
+                <MapPin className="w-3 h-3" />
+                <p>{grave.latitude?.toFixed(4)}, {grave.longitude?.toFixed(4)}</p>
+              </div>
               {grave.date_of_death && (
-                <p>Time Since Death: {getTimeSinceDeath(grave.date_of_birth || "", grave.date_of_death)}</p>
+                <p className="text-xs">Since Death: {getTimeSinceDeath(grave.date_of_birth || "", grave.date_of_death)}</p>
               )}
             </div>
 
-            {grave.additional_info && <p className="text-sm mb-3 line-clamp-2">{grave.additional_info}</p>}
+            {grave.additional_info && (
+              <p className="text-xs sm:text-sm mb-2 sm:mb-3 line-clamp-2">{grave.additional_info}</p>
+            )}
 
-            <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
               <Button onClick={() => onEdit(grave)} size="sm" variant="outline" className="flex-1">
                 <Pencil className="w-3 h-3 mr-1" /> Edit
               </Button>
@@ -194,7 +206,7 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
 
       {/* Grave Details Dialog */}
       <Dialog open={!!selectedGrave} onOpenChange={() => setSelectedGrave(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-serif">{selectedGrave?.grave_name}</DialogTitle>
             <DialogDescription>
@@ -204,7 +216,7 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
 
           <div className="space-y-4">
             {selectedGrave?.grave_image_url && (
-              <div className="relative w-full h-64 rounded-md overflow-hidden bg-gray-100">
+              <div className="relative w-full h-48 sm:h-64 rounded-md overflow-hidden bg-gray-100">
                 <img
                   src={selectedGrave.grave_image_url}
                   alt={selectedGrave.grave_name}
@@ -213,21 +225,33 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Date of Birth:</p>
+                <p className="text-sm font-medium text-muted-foreground flex items-center space-x-1">
+                  <Calendar className="w-4 h-4" />
+                  <span>Date of Birth:</span>
+                </p>
                 <p className="text-lg">{selectedGrave?.date_of_birth ? new Date(selectedGrave.date_of_birth).toLocaleDateString() : "-"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Date of Death:</p>
+                <p className="text-sm font-medium text-muted-foreground flex items-center space-x-1">
+                  <Calendar className="w-4 h-4" />
+                  <span>Date of Death:</span>
+                </p>
                 <p className="text-lg">{selectedGrave?.date_of_death ? new Date(selectedGrave.date_of_death).toLocaleDateString() : "-"}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Latitude:</p>
+                <p className="text-sm font-medium text-muted-foreground flex items-center space-x-1">
+                  <MapPin className="w-4 h-4" />
+                  <span>Latitude:</span>
+                </p>
                 <p className="text-lg">{selectedGrave?.latitude?.toFixed(6)}</p>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Longitude:</p>
+                <p className="text-sm font-medium text-muted-foreground flex items-center space-x-1">
+                  <MapPin className="w-4 h-4" />
+                  <span>Longitude:</span>
+                </p>
                 <p className="text-lg">{selectedGrave?.longitude?.toFixed(6)}</p>
               </div>
             </div>
