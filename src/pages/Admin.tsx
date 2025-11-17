@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Leaf, LogOut, Plus, Download, Upload, ChevronDown } from "lucide-react";
+import { Leaf, LogOut, Plus, Download, Upload, ChevronDown, Users } from "lucide-react";
 import { GraveList } from "@/components/admin/GraveList";
 import { GraveForm } from "@/components/admin/GraveForm";
 import {
@@ -18,13 +18,54 @@ import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 const DEFAULT_LAT = 11.494580675546114;
 const DEFAULT_LNG = 122.60993819946555;
+
+/*
+To enable user management, create this RPC function in Supabase SQL Editor:
+
+CREATE OR REPLACE FUNCTION public.get_admin_users()
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  is_admin boolean;
+BEGIN
+  -- Check if current user is admin
+  SELECT EXISTS(SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin') INTO is_admin;
+  IF NOT is_admin THEN
+    RAISE EXCEPTION 'Access denied: Admin privileges required';
+  END IF;
+
+  -- Return array of users with admin status
+  RETURN (
+    SELECT json_agg(
+      json_build_object(
+        'id', u.id,
+        'email', u.email,
+        'full_name', COALESCE(u.raw_user_meta_data->>'full_name', null),
+        'isAdmin', EXISTS(SELECT 1 FROM public.user_roles ur WHERE ur.user_id = u.id AND ur.role = 'admin')
+      )
+    )
+    FROM auth.users u
+  );
+END;
+$$;
+
+Note: Enable RLS on auth.users if needed, but SECURITY DEFINER bypasses it.
+Also, ensure the function owner has necessary privileges.
+*/
+
 const Admin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
   const [editingGrave, setEditingGrave] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importType, setImportType] = useState<"json" | "csv" | null>(null);
@@ -33,6 +74,11 @@ const Admin = () => {
   useEffect(() => {
     checkAdminStatus();
   }, []);
+  useEffect(() => {
+    if (showUsers && users.length === 0) {
+      fetchUsers();
+    }
+  }, [showUsers]);
   const checkAdminStatus = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return navigate("/auth");
@@ -52,6 +98,57 @@ const Admin = () => {
     }
     setIsAdmin(true);
     setLoading(false);
+  };
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const { data, error } = await supabase.rpc("get_admin_users");
+      if (error) throw error;
+      if (!data) {
+        setUsers([]);
+        return;
+      }
+      // data is json array, parse if needed, but rpc returns array directly? Wait, since returns json, but supabase.rpc returns the return type.
+      // Actually, for json return, it's string? No, supabase handles it as array/object.
+      setUsers(data || []);
+    } catch (error: any) {
+      toast({
+        title: "Failed to load users",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+  const handleToggleAdmin = async (userId: string, isCurrentlyAdmin: boolean) => {
+    try {
+      if (isCurrentlyAdmin) {
+        // Remove admin role
+        const { error } = await supabase
+          .from("user_roles")
+          .delete()
+          .eq("user_id", userId)
+          .eq("role", "admin");
+        if (error) throw error;
+        toast({ title: "Admin role removed successfully." });
+      } else {
+        // Assign admin role
+        const { error } = await supabase
+          .from("user_roles")
+          .insert({ user_id: userId, role: "admin" });
+        if (error) throw error;
+        toast({ title: "Admin role assigned successfully." });
+      }
+      // Refresh the users list
+      fetchUsers();
+    } catch (error: any) {
+      toast({
+        title: "Error updating role",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -219,10 +316,55 @@ const Admin = () => {
               <GraveForm grave={editingGrave} onClose={handleFormClose} />
             </CardContent>
           </Card>
+        ) : showUsers ? (
+          <Card className="shadow-medium">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>Manage user roles for the cemetery system</CardDescription>
+              </div>
+              <Button variant="outline" onClick={() => setShowUsers(false)}>
+                Back to Graves
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loadingUsers ? (
+                <p className="text-center text-muted-foreground">Loading users...</p>
+              ) : (
+                <div className="space-y-4">
+                  {users.length === 0 ? (
+                    <p className="text-center text-muted-foreground">No users found.</p>
+                  ) : (
+                    users.map((user: any) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center justify-between p-4 border rounded-lg bg-card/50"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-medium">{user.full_name || user.email}</p>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Role: {user.isAdmin ? "Admin" : "User"}
+                          </p>
+                        </div>
+                        <Button
+                          variant={user.isAdmin ? "destructive" : "default"}
+                          size="sm"
+                          onClick={() => handleToggleAdmin(user.id, user.isAdmin)}
+                        >
+                          {user.isAdmin ? "Remove Admin" : "Make Admin"}
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         ) : (
           <>
             {/* Action Buttons */}
-            <div className="mb-6 flex items-center justify-between">                                                        
+            <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-serif font-bold mb-1">Grave Records</h2>
                 <p className="text-muted-foreground">Manage cemetery grave locations and information</p>
@@ -230,6 +372,9 @@ const Admin = () => {
               <div className="flex space-x-2">
                 <Button onClick={() => setShowForm(true)} className="shadow-soft">
                   <Plus className="w-4 h-4 mr-2" /> Add Grave
+                </Button>
+                <Button onClick={() => setShowUsers(true)} className="shadow-soft">
+                  <Users className="w-4 h-4 mr-2" /> Users
                 </Button>
                 {/* Export Data Dropdown */}
                 <div className="relative">

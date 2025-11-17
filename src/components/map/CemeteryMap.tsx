@@ -185,7 +185,7 @@ const CemeteryMap = ({ selectedGrave, setSelectedGrave, userLocation }: Cemetery
           <h3 style="margin:0 0 4px;font-size:14px;font-weight:600;">${grave.grave_name}</h3>
           ${
             grave.grave_image_url
-              ? `<img src="${grave.grave_image_url}" style="width:100%;height:90px;object-fit:cover;border-radius:4px;margin:4px 0;" />`
+              ? `<img src="${grave.grave_image_url}" onerror="this.style.display='none'" style="width:100%;height:90px;object-fit:cover;border-radius:4px;margin:4px 0;display:block;" />`
               : ""
           }
           ${
@@ -238,7 +238,7 @@ const CemeteryMap = ({ selectedGrave, setSelectedGrave, userLocation }: Cemetery
         <h3 style="margin:0 0 4px;font-size:14px;font-weight:600;">${selectedGrave.grave_name}</h3>
         ${
           selectedGrave.grave_image_url
-            ? `<img src="${selectedGrave.grave_image_url}" style="width:100%;height:90px;object-fit:cover;border-radius:4px;margin:4px 0;" />`
+            ? `<img src="${selectedGrave.grave_image_url}" onerror="this.style.display='none'" style="width:100%;height:90px;object-fit:cover;border-radius:4px;margin:4px 0;display:block;" />`
             : ""
         }
         ${

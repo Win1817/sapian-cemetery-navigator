@@ -1,3 +1,4 @@
+// src/components/admin/GraveForm.tsx
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Upload } from "lucide-react";
+import heic2any from "heic2any";
 
 interface GraveFormProps {
   grave?: any;
@@ -26,14 +28,32 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
+  const convertHeicToJpegFile = async (file: File): Promise<File> => {
+    const blob = await heic2any({
+      blob: file,
+      toType: "image/jpeg",
+      quality: 0.9,
+    }) as Blob;
+
+    return new File([blob], file.name.replace(/\.(heic|HEIC|heif|HEIF)$/i, ".jpg"), {
+      type: "image/jpeg",
+    });
+  };
+
   const handleImageUpload = async (file: File) => {
-    const fileExt = file.name.split(".").pop();
+    let uploadFile = file;
+
+    if (file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif")) {
+      uploadFile = await convertHeicToJpegFile(file);
+    }
+
+    const fileExt = uploadFile.name.split(".").pop();
     const fileName = `${Math.random()}.${fileExt}`;
     const filePath = `${fileName}`;
 
-    const { error: uploadError, data } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("grave-images")
-      .upload(filePath, file);
+      .upload(filePath, uploadFile, { upsert: true });
 
     if (uploadError) throw uploadError;
 
@@ -99,6 +119,7 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Name */}
       <div className="space-y-2">
         <Label htmlFor="grave_name">Name *</Label>
         <Input
@@ -110,6 +131,7 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
         />
       </div>
 
+      {/* Latitude & Longitude */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="latitude">Latitude *</Label>
@@ -137,23 +159,27 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
         </div>
       </div>
 
+      {/* Image */}
       <div className="space-y-2">
         <Label htmlFor="image">Grave Image</Label>
         <div className="flex items-center space-x-2">
           <Input
             id="image"
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             onChange={(e) => setImageFile(e.target.files?.[0] || null)}
             className="flex-1"
           />
           <Upload className="w-4 h-4 text-muted-foreground" />
         </div>
         {formData.grave_image_url && !imageFile && (
-          <p className="text-xs text-muted-foreground">Current image will be kept if no new file is uploaded</p>
+          <p className="text-xs text-muted-foreground">
+            Current image will be kept if no new file is uploaded
+          </p>
         )}
       </div>
 
+      {/* Dates */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="date_of_birth">Date of Birth</Label>
@@ -175,6 +201,7 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
         </div>
       </div>
 
+      {/* Additional info */}
       <div className="space-y-2">
         <Label htmlFor="additional_info">Additional Information</Label>
         <Textarea
@@ -186,6 +213,7 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
         />
       </div>
 
+      {/* Buttons */}
       <div className="flex space-x-2 pt-4">
         <Button type="button" variant="outline" onClick={onClose} className="flex-1">
           Cancel
