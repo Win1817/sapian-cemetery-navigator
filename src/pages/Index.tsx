@@ -11,9 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 interface Grave {
   id: string;
   grave_name: string;
-  latitude: number;
-  longitude: number;
-  lot_number?: string;
+  latitude: number | null;
+  longitude: number | null;
   grave_image_url?: string;
   date_of_birth?: string;
   date_of_death?: string;
@@ -30,13 +29,11 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [locationEnabled, setLocationEnabled] = useState(false);
 
-  /* Initialize auth + location */
   useEffect(() => {
     checkUser();
     requestLocation();
   }, []);
 
-  /* Checks logged-in user */
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
 
@@ -48,19 +45,14 @@ const Index = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null);
-
-        if (session?.user) {
-          checkAdminStatus(session.user.id);
-        } else {
-          setIsAdmin(false);
-        }
+        if (session?.user) checkAdminStatus(session.user.id);
+        else setIsAdmin(false);
       }
     );
 
     return () => subscription.unsubscribe();
   };
 
-  /* Check if logged-in user is admin */
   const checkAdminStatus = async (userId: string) => {
     const { data: roles } = await supabase
       .from("user_roles")
@@ -68,11 +60,9 @@ const Index = () => {
       .eq("user_id", userId)
       .eq("role", "admin")
       .maybeSingle();
-
     setIsAdmin(!!roles);
   };
 
-  /* Request browser location */
   const requestLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
@@ -108,45 +98,34 @@ const Index = () => {
     setSelectedGrave(grave);
   };
 
+  const calculateAge = (dob: string, dod?: string) => {
+    const birth = new Date(dob);
+    const end = dod ? new Date(dod) : new Date();
+    let age = end.getFullYear() - birth.getFullYear();
+    const m = end.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && end.getDate() < birth.getDate())) age--;
+    return age;
+  };
+
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
 
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
-        <div className="absolute inset-0 opacity-5">
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                `radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.1) 1px, transparent 0)`,
-              backgroundSize: "50px 50px",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* HEADER — FIXED */}
+      {/* Header */}
       <header className="bg-card shadow-soft border-b z-20 relative w-full">
         <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-
-          {/* Left Title Section */}
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
               <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
             </div>
-
             <div className="leading-tight">
               <h1 className="text-xl sm:text-2xl font-serif font-bold">Sapian Cemetery</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Navigation & Grave Locator
-              </p>
+              <p className="text-xs sm:text-sm text-muted-foreground">Navigation & Grave Locator</p>
             </div>
           </div>
-
-          {/* Right Buttons Section */}
           <div className="flex items-center space-x-2 justify-end">
-
-            {/* ADMIN BUTTON */}
             {isAdmin && (
               <Button
                 onClick={() => navigate("/admin")}
@@ -158,8 +137,6 @@ const Index = () => {
                 Administrator
               </Button>
             )}
-
-            {/* SIGN OUT / SIGN IN — matching admin button style */}
             {user ? (
               <Button
                 onClick={() => supabase.auth.signOut()}
@@ -183,13 +160,12 @@ const Index = () => {
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
+      {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6 relative z-10">
 
-        {/* SEARCH + LOCATION STATUS */}
+        {/* Search + Location */}
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SearchBar onSelectGrave={handleSelectGrave} />
-
           <div className="flex items-center space-x-2">
             {locationEnabled && (
               <div className="flex items-center space-x-1 px-3 py-1 bg-primary/10 rounded-full">
@@ -197,7 +173,6 @@ const Index = () => {
                 <span className="text-xs font-medium text-primary">Location Active</span>
               </div>
             )}
-
             {!userLocation && (
               <Button
                 onClick={requestLocation}
@@ -212,7 +187,7 @@ const Index = () => {
           </div>
         </div>
 
-        {/* MAP */}
+        {/* Map */}
         <div className="h-[calc(100vh-220px)] rounded-lg overflow-hidden shadow-medium border border-border/50 relative z-0">
           <CemeteryMap
             selectedGrave={selectedGrave}
@@ -222,21 +197,31 @@ const Index = () => {
           />
         </div>
 
-        {/* SELECTED GRAVE DETAILS */}
+        {/* Selected Grave Details */}
         {selectedGrave && (
-          <div className="mt-4 bg-card p-4 rounded-lg shadow-soft">
-            <h3 className="font-serif font-bold text-lg mb-2">{selectedGrave.grave_name}</h3>
-
-            {selectedGrave.date_of_birth && selectedGrave.date_of_death && (
-              <p className="text-sm text-muted-foreground mb-2">
-                {new Date(selectedGrave.date_of_birth).getFullYear()} –{" "}
-                {new Date(selectedGrave.date_of_death).getFullYear()}
-              </p>
+          <div className="mt-4 bg-card p-4 rounded-lg shadow-soft flex flex-col sm:flex-row gap-4 items-start">
+            {selectedGrave.grave_image_url && (
+              <img
+                src={selectedGrave.grave_image_url}
+                alt={selectedGrave.grave_name}
+                className="w-32 h-32 object-cover rounded-lg flex-shrink-0"
+              />
             )}
-
-            {selectedGrave.additional_info && (
-              <p className="text-sm">{selectedGrave.additional_info}</p>
-            )}
+            <div className="flex-1 text-left space-y-1">
+              <p className="font-serif font-bold text-lg">NAME: {selectedGrave.grave_name}</p>
+              {selectedGrave.date_of_birth && (
+                <p className="text-sm">AGE: {calculateAge(selectedGrave.date_of_birth, selectedGrave.date_of_death)} yrs old</p>
+              )}
+              {selectedGrave.date_of_birth && (
+                <p className="text-sm">BIRTH DATE: {formatDate(selectedGrave.date_of_birth)}</p>
+              )}
+              {selectedGrave.date_of_death && (
+                <p className="text-sm">DATE OF DEATH: {formatDate(selectedGrave.date_of_death)}</p>
+              )}
+              {selectedGrave.additional_info && (
+                <p className="text-sm">ADDITIONAL INFO: {selectedGrave.additional_info}</p>
+              )}
+            </div>
           </div>
         )}
       </main>
