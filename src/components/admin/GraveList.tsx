@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Pencil, Trash2, MapPin, Calendar, Image } from "lucide-react";
 import {
@@ -43,6 +45,8 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
   const [graves, setGraves] = useState<Grave[]>([]);
   const [filteredGraves, setFilteredGraves] = useState<Grave[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [familyNameFilter, setFamilyNameFilter] = useState("");
+  const [deathYearFilter, setDeathYearFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [selectedGrave, setSelectedGrave] = useState<Grave | null>(null);
@@ -53,18 +57,46 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
   }, []);
 
   useEffect(() => {
-    const filtered = graves.filter((grave) =>
-      grave.grave_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let filtered = graves;
+
+    // Filter by grave name search
+    if (searchTerm) {
+      filtered = filtered.filter((grave) =>
+        grave.grave_name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Filter by family name (extract last name(s) from grave_name)
+    if (familyNameFilter) {
+      filtered = filtered.filter((grave) => {
+        const nameParts = grave.grave_name.trim().split(/\s+/);
+        let lastName: string;
+        if (nameParts.length > 1) {
+          lastName = nameParts.slice(1).join(' ').toLowerCase();
+        } else {
+          lastName = nameParts[0].toLowerCase();
+        }
+        return lastName.includes(familyNameFilter.toLowerCase());
+      });
+    }
+
+    // Filter by year of death
+    if (deathYearFilter) {
+      filtered = filtered.filter((grave) => {
+        if (!grave.date_of_death) return false;
+        const deathDate = new Date(grave.date_of_death);
+        return deathDate.getFullYear().toString() === deathYearFilter;
+      });
+    }
+
     setFilteredGraves(filtered);
-  }, [searchTerm, graves]);
+  }, [searchTerm, familyNameFilter, deathYearFilter, graves]);
 
   const fetchGraves = async () => {
     const { data, error } = await supabase
       .from("graves")
       .select("*")
       .order("grave_name");
-
     if (error) {
       toast({ title: "Error fetching graves", description: error.message, variant: "destructive" });
     } else {
@@ -100,7 +132,17 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
     return `${diffYears}y ${diffMonths}m ${diffDays}d`;
   };
 
+  // Generate unique death years for select options
+  const deathYears = Array.from(
+    new Set(
+      graves
+        .filter((g) => g.date_of_death)
+        .map((g) => new Date(g.date_of_death!).getFullYear().toString())
+    )
+  ).sort((a, b) => parseInt(b) - parseInt(a)); // Descending order
+
   if (loading) return <div className="text-center py-8 text-muted-foreground">Loading graves...</div>;
+
   if (graves.length === 0)
     return (
       <Card className="p-8 text-center shadow-soft">
@@ -110,18 +152,46 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
 
   return (
     <>
-      <div className="mb-4">
-        <Input
-          placeholder="Search graves by name..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full"
-        />
-        <p className="text-sm text-muted-foreground mt-1">
+      <div className="mb-4 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="search">Search by Grave Name</Label>
+            <Input
+              id="search"
+              placeholder="Search graves by name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="family-name">Filter by Family Name</Label>
+            <Input
+              id="family-name"
+              placeholder="Enter family name..."
+              value={familyNameFilter}
+              onChange={(e) => setFamilyNameFilter(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="death-year">Filter by Year of Death</Label>
+            <Select value={deathYearFilter} onValueChange={setDeathYearFilter}>
+              <SelectTrigger id="death-year">
+                <SelectValue placeholder="All Years" />
+              </SelectTrigger>
+              <SelectContent>
+                {deathYears.map((year) => (
+                  <SelectItem key={year} value={year}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
           Showing {filteredGraves.length} of {graves.length} graves
         </p>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredGraves.map((grave) => (
           <Card key={grave.id} className="p-3 sm:p-4 shadow-soft hover:shadow-medium transition-shadow overflow-hidden">
@@ -141,14 +211,12 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
                 </div>
               )}
             </div>
-
             <h3
               className="font-serif font-bold text-base sm:text-lg mb-1 sm:mb-2 cursor-pointer hover:text-primary transition-colors line-clamp-1"
               onClick={() => handleGraveClick(grave)}
             >
               {grave.grave_name}
             </h3>
-
             <div className="text-xs sm:text-sm text-muted-foreground mb-2 space-y-1">
               <div className="flex items-center space-x-1">
                 <Calendar className="w-3 h-3" />
@@ -166,11 +234,9 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
                 <p className="text-xs">Since Death: {getTimeSinceDeath(grave.date_of_birth || "", grave.date_of_death)}</p>
               )}
             </div>
-
             {grave.additional_info && (
               <p className="text-xs sm:text-sm mb-2 sm:mb-3 line-clamp-2">{grave.additional_info}</p>
             )}
-
             <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
               <Button onClick={() => onEdit(grave)} size="sm" variant="outline" className="flex-1">
                 <Pencil className="w-3 h-3 mr-1" /> Edit
@@ -187,7 +253,6 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
           </Card>
         ))}
       </div>
-
       {/* Delete Grave Dialog */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
@@ -203,7 +268,6 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
       {/* Grave Details Dialog */}
       <Dialog open={!!selectedGrave} onOpenChange={() => setSelectedGrave(null)}>
         <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -213,7 +277,6 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
               Detailed view of the grave record.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4">
             {selectedGrave?.grave_image_url && (
               <div className="relative w-full h-48 sm:h-64 rounded-md overflow-hidden bg-gray-100">
@@ -224,7 +287,6 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
                 />
               </div>
             )}
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground flex items-center space-x-1">
@@ -255,14 +317,12 @@ export const GraveList = ({ onEdit }: GraveListProps) => {
                 <p className="text-lg">{selectedGrave?.longitude?.toFixed(6)}</p>
               </div>
             </div>
-
             {selectedGrave?.date_of_death && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Time Since Death:</p>
                 <p className="text-lg">{getTimeSinceDeath(selectedGrave.date_of_birth || "", selectedGrave.date_of_death)}</p>
               </div>
             )}
-
             {selectedGrave?.additional_info && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Additional Information:</p>

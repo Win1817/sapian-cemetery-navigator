@@ -1,10 +1,27 @@
 // src/pages/Admin.tsx
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Leaf, LogOut, Plus, Download, Upload, ChevronDown, Users } from "lucide-react";
+import {
+  Leaf,
+  LogOut,
+  Plus,
+  Download,
+  Users,
+  Shield,
+} from "lucide-react";
 import { GraveList } from "@/components/admin/GraveList";
 import { GraveForm } from "@/components/admin/GraveForm";
 import {
@@ -17,12 +34,21 @@ import {
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 
-const DEFAULT_LAT = 11.494580675546114;
-const DEFAULT_LNG = 122.60993819946555;
+interface Grave {
+  id: string;
+  grave_name: string;
+  latitude: number;
+  longitude: number;
+  grave_image_url?: string;
+  date_of_birth?: string;
+  date_of_death?: string;
+  additional_info?: string;
+}
 
 const Admin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,11 +56,14 @@ const Admin = () => {
   const [editingGrave, setEditingGrave] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importType, setImportType] = useState<"json" | "csv" | null>(null);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [refreshGraves, setRefreshGraves] = useState(false);
+
+  // Export dialog states
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportGraves, setExportGraves] = useState<Grave[]>([]);
+  const [selectedGravesForExport, setSelectedGravesForExport] = useState<Set<string>>(new Set());
+  const [searchExport, setSearchExport] = useState("");
+  const [exportFormat, setExportFormat] = useState<"json" | "csv" | "pdf">("json");
 
   useEffect(() => {
     checkAdminStatus();
@@ -65,6 +94,7 @@ const Admin = () => {
       });
       return navigate("/");
     }
+
     setIsAdmin(true);
     setLoading(false);
   };
@@ -83,19 +113,31 @@ const Admin = () => {
   };
 
   const handleToggleAdmin = async (userId: string, isCurrentlyAdmin: boolean) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (userId === session?.user.id) {
+      toast({ title: "Cannot modify your own role", variant: "destructive" });
+      return;
+    }
+
     try {
       if (isCurrentlyAdmin) {
-        const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "admin");
+        const { error } = await supabase
+          .from("user_roles")
+          .delete()
+          .eq("user_id", userId)
+          .eq("role", "admin");
         if (error) throw error;
-        toast({ title: "Admin role removed successfully." });
+        toast({ title: "Admin role removed" });
       } else {
-        const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+        const { error } = await supabase
+          .from("user_roles")
+          .upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
         if (error) throw error;
-        toast({ title: "Admin role assigned successfully." });
+        toast({ title: "Admin role assigned" });
       }
       fetchUsers();
     } catch (error: any) {
-      toast({ title: "Error updating role", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
@@ -115,70 +157,75 @@ const Admin = () => {
     setRefreshGraves(!refreshGraves);
   };
 
-  const handleExport = async (format: "json" | "csv" | "pdf") => {
-    const { data, error } = await supabase.from("graves").select("*").order("grave_name");
-    if (error) return toast({ title: "Export Failed", description: error.message, variant: "destructive" });
-    if (!data || data.length === 0) return toast({ title: "No Data", description: "No grave records to export." });
+  const handleOpenExport = async () => {
+    const { data, error } = await supabase
+      .from("graves")
+      .select("*")
+      .order("grave_name");
 
-    if (format === "json") {
-      saveAs(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "graves.json");
-    } else if (format === "csv") {
+    if (error) {
+      toast({ title: "Error loading graves", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    setExportGraves(data || []);
+    setSelectedGravesForExport(new Set());
+    setSearchExport("");
+    setExportFormat("json");
+    setExportDialogOpen(true);
+  };
+
+  const toggleGraveForExport = (id: string) => {
+    setSelectedGravesForExport((prev) => {
+      const newSet = new Set(prev);
+      newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+      return newSet;
+    });
+  };
+
+  const handleExportGraves = async () => {
+    let data = selectedGravesForExport.size > 0
+      ? exportGraves.filter(g => selectedGravesForExport.has(g.id))
+      : exportGraves;
+
+    if (data.length === 0) {
+      toast({ title: "No data", description: "No graves to export." });
+      return;
+    }
+
+    const filename = selectedGravesForExport.size > 0 ? "selected_graves" : "all_graves";
+
+    if (exportFormat === "json") {
+      saveAs(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `${filename}.json`);
+    } else if (exportFormat === "csv") {
       const headers = Object.keys(data[0]);
-      const csv = [headers.join(","), ...data.map(row => headers.map(h => `"${row[h]}"`).join(","))].join("\n");
-      saveAs(new Blob([csv], { type: "text/csv;charset=utf-8" }), "graves.csv");
-    } else if (format === "pdf") {
+      const csv = [
+        headers.join(","),
+        ...data.map(row => headers.map(h => `"${(row as any)[h] || ''}"`).join(",")),
+      ].join("\n");
+      saveAs(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${filename}.csv`);
+    } else if (exportFormat === "pdf") {
       const doc = new jsPDF();
-      data.forEach((row, i) => doc.text(`${i + 1}. ${row.grave_name} - ${row.latitude}, ${row.longitude}`, 10, 10 + i * 10));
-      doc.save("graves.pdf");
+      let y = 20;
+      doc.setFontSize(16);
+      doc.text(selectedGravesForExport.size > 0 ? "Selected Graves" : "All Graves", 10, y);
+      y += 15;
+      doc.setFontSize(10);
+      data.forEach((row, i) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(`${i + 1}. ${row.grave_name} — ${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)}`, 10, y);
+        y += 8;
+      });
+      doc.save(`${filename}.pdf`);
     }
-    setExportOpen(false);
+
+    toast({ title: "Export successful", description: `${data.length} records exported as ${exportFormat.toUpperCase()}.` });
+    setExportDialogOpen(false);
   };
 
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !importType) return;
-
-    try {
-      const text = await file.text();
-      let data: any[] = [];
-
-      if (importType === "json") data = JSON.parse(text);
-      if (importType === "csv") {
-        const [headerLine, ...lines] = text.split("\n").filter(Boolean);
-        const headers = headerLine.split(",");
-        const requiredHeaders = ["grave_name"];
-        const missing = requiredHeaders.filter(h => !headers.includes(h));
-        if (missing.length > 0) throw new Error(`CSV is missing required headers: ${missing.join(",")}`);
-        data = lines.map(line => {
-          const values = line.split(",");
-          const obj: any = {};
-          headers.forEach((h, i) => { obj[h.trim()] = values[i]?.trim() || null; });
-          return obj;
-        });
-      }
-
-      const processedData = data.map(row => ({
-        grave_name: row.grave_name || "",
-        latitude: row.latitude ? parseFloat(row.latitude) : DEFAULT_LAT,
-        longitude: row.longitude ? parseFloat(row.longitude) : DEFAULT_LNG,
-        grave_image_url: row.grave_image_url || null,
-        date_of_birth: row.date_of_birth || null,
-        date_of_death: row.date_of_death || null,
-        additional_info: row.additional_info || null,
-      }));
-
-      const { error } = await supabase.from("graves").insert(processedData);
-      if (error) throw error;
-      toast({ title: "Data Imported", description: `${processedData.length} grave records imported successfully.` });
-      setRefreshGraves(!refreshGraves);
-    } catch (err: any) {
-      toast({ title: "Import Failed", description: err.message, variant: "destructive" });
-    } finally {
-      setImportOpen(false);
-      setImportType(null);
-      if (importInputRef.current) importInputRef.current.value = "";
-    }
-  };
+  const filteredExportGraves = exportGraves.filter((grave) =>
+    grave.grave_name.toLowerCase().includes(searchExport.toLowerCase())
+  );
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -187,14 +234,13 @@ const Admin = () => {
         <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
           <Leaf className="w-8 h-8 text-primary-foreground" />
         </div>
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">Loading admin panel...</p>
       </div>
     </div>
   );
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
         <div className="absolute inset-0 opacity-5" style={{
@@ -206,40 +252,21 @@ const Admin = () => {
       {/* Header */}
       <header className="bg-card shadow-soft border-b relative z-10">
         <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-
-          {/* Left Title Section */}
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
               <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
             </div>
-
             <div className="leading-tight">
               <h1 className="text-xl sm:text-2xl font-serif font-bold">Admin Dashboard</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Sapian Cemetery Management
-              </p>
+              <p className="text-xs sm:text-sm text-muted-foreground">Sapian Cemetery Management</p>
             </div>
           </div>
-
-          {/* Right Buttons Section — UPDATED */}
           <div className="flex items-center space-x-2 justify-end">
-            <Button
-              onClick={() => navigate("/")}
-              variant="outline"
-              size="sm"
-              className="hover:bg-[#5D866C] hover:text-white border border-primary/40 flex items-center"
-            >
+            <Button onClick={() => navigate("/")} variant="outline" size="sm" className="hover:bg-[#5D866C] hover:text-white border border-primary/40">
               View Map
             </Button>
-
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              size="sm"
-              className="hover:bg-[#5D866C] hover:text-white border border-primary/40 flex items-center"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
+            <Button onClick={handleLogout} variant="outline" size="sm" className="hover:bg-[#5D866C] hover:text-white border border-primary/40">
+              <LogOut className="w-4 h-4 mr-2" /> Logout
             </Button>
           </div>
         </div>
@@ -251,7 +278,7 @@ const Admin = () => {
           <Card className="shadow-medium">
             <CardHeader>
               <CardTitle>{editingGrave ? "Edit Grave" : "Add New Grave"}</CardTitle>
-              <CardDescription>{editingGrave ? "Update grave information" : "Add a new grave to the cemetery database"}</CardDescription>
+              <CardDescription>{editingGrave ? "Update grave information" : "Add a new grave to the database"}</CardDescription>
             </CardHeader>
             <CardContent>
               <GraveForm grave={editingGrave} onClose={handleFormClose} />
@@ -259,107 +286,142 @@ const Admin = () => {
           </Card>
         ) : showUsers ? (
           <Card className="shadow-medium">
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-              <div className="space-y-1">
-                <CardTitle className="text-base sm:text-lg">User Management</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">Manage user roles for the cemetery system</CardDescription>
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>Manage registered users and roles</CardDescription>
               </div>
-              <Button variant="outline" onClick={() => setShowUsers(false)} size="sm"
-                className="hover:bg-[#5D866C] hover:text-white border border-primary/40 flex items-center"
-              >
+              <Button variant="outline" onClick={() => setShowUsers(false)} size="sm">
                 Back to Graves
               </Button>
             </CardHeader>
             <CardContent>
               {loadingUsers ? (
-                <p className="text-center text-muted-foreground">Loading users...</p>
+                <p className="text-center py-8 text-muted-foreground">Loading users...</p>
+              ) : users.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">No users found.</p>
               ) : (
-                <div className="space-y-3 sm:space-y-4">
-                  {users.length === 0 ? (
-                    <p className="text-center text-muted-foreground">No users found.</p>
-                  ) : (
-                    users.map((user: any) => (
-                      <div
-                        key={user.id}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border rounded-lg bg-card/50 gap-2 sm:gap-0"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <p className="font-medium text-sm sm:text-base truncate">{user.full_name || user.email}</p>
-                          <p className="text-xs sm:text-sm text-muted-foreground truncate">{user.email}</p>
-                          <p className="text-xs text-muted-foreground">Role: {user.isAdmin ? "Admin" : "User"}</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {users.map((user: any) => (
+                    <Card
+                      key={user.id}
+                      className="p-4 hover:shadow-lg transition-shadow cursor-pointer border-l-4 border-l-primary/50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h4 className="font-semibold text-lg">{user.full_name || user.email}</h4>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Shield className={`w-4 h-4 ${user.isAdmin ? "text-green-600" : "text-gray-400"}`} />
+                            <span className="text-xs font-medium">{user.isAdmin ? "Administrator" : "Standard User"}</span>
+                          </div>
                         </div>
                         <Button
-                          variant={user.isAdmin ? "destructive" : "default"}
                           size="sm"
+                          variant={user.isAdmin ? "destructive" : "default"}
                           onClick={() => handleToggleAdmin(user.id, user.isAdmin)}
-                          className="w-full sm:w-auto"
                         >
                           {user.isAdmin ? "Remove Admin" : "Make Admin"}
                         </Button>
                       </div>
-                    ))
-                  )}
+                    </Card>
+                  ))}
                 </div>
               )}
             </CardContent>
           </Card>
         ) : (
           <>
-            {/* Action Buttons */}
-            <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-              <div className="space-y-1">
-                <h2 className="text-xl sm:text-2xl font-serif font-bold mb-0">Grave Records</h2>
-                <p className="text-sm sm:text-base text-muted-foreground">Manage cemetery grave locations and information</p>
+            <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-serif font-bold">Grave Records</h2>
+                <p className="text-muted-foreground">Manage cemetery graves and locations</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
-                <Button onClick={() => setShowForm(true)} size="sm" className="shadow-soft flex-1 sm:flex-none min-w-0">
-                  <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Add Grave
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => setShowForm(true)} size="sm">
+                  <Plus className="w-4 h-4 mr-2" /> Add Grave
                 </Button>
-                <Button onClick={() => setShowUsers(true)} size="sm" className="shadow-soft flex-1 sm:flex-none min-w-0">
-                  <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> Users
+                <Button onClick={() => setShowUsers(true)} size="sm">
+                  <Users className="w-4 h-4 mr-2" /> Users
                 </Button>
-
-                {/* Export Data Dropdown */}
-                <div className="relative flex-1 sm:flex-none min-w-0">
-                  <Button onClick={() => setExportOpen(!exportOpen)} size="sm" className="shadow-soft flex items-center justify-center w-full min-w-0 px-2 sm:px-3">
-                    <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> <span className="hidden sm:inline">Export</span> <span className="sm:hidden">Data</span> <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 ml-0 sm:ml-1" />
-                  </Button>
-                  {exportOpen && (
-                    <div className="absolute right-0 mt-1 sm:mt-2 w-32 sm:w-40 bg-card border rounded-md shadow-lg z-50">
-                      <Button variant="ghost" className="w-full justify-start px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm" onClick={() => handleExport("json")}>JSON</Button>
-                      <Button variant="ghost" className="w-full justify-start px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm" onClick={() => handleExport("csv")}>CSV</Button>
-                      <Button variant="ghost" className="w-full justify-start px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm" onClick={() => handleExport("pdf")}>PDF</Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Import Data Dropdown */}
-                <div className="relative flex-1 sm:flex-none min-w-0">
-                  <Button onClick={() => setImportOpen(!importOpen)} size="sm" className="shadow-soft flex items-center justify-center w-full min-w-0 px-2 sm:px-3">
-                    <Upload className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" /> <span className="hidden sm:inline">Import</span> <span className="sm:hidden">Data</span> <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 ml-0 sm:ml-1" />
-                  </Button>
-                  {importOpen && (
-                    <div className="absolute right-0 mt-1 sm:mt-2 w-32 sm:w-40 bg-card border rounded-md shadow-lg z-50">
-                      <Button variant="ghost" className="w-full justify-start px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm"
-                        onClick={() => { setImportType("json"); importInputRef.current?.click(); }}>
-                        JSON
-                      </Button>
-                      <Button variant="ghost" className="w-full justify-start px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm"
-                        onClick={() => { setImportType("csv"); importInputRef.current?.click(); }}>
-                        CSV
-                      </Button>
-                    </div>
-                  )}
-                  <input type="file" ref={importInputRef} accept=".json,.csv,application/json,text/csv" onChange={handleImport} className="hidden" />
-                </div>
+                <Button onClick={handleOpenExport} size="sm">
+                  <Download className="w-4 h-4 mr-2" /> Export
+                </Button>
               </div>
             </div>
-
-            {/* Grave List */}
             <GraveList key={refreshGraves.toString()} onEdit={handleEdit} />
           </>
         )}
       </main>
+
+      {/* Export Dialog */}
+      {exportDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg max-w-6xl max-h-[90vh] w-full flex flex-col overflow-hidden">
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-bold">Export Graves</h3>
+              <p className="text-sm text-muted-foreground">Select graves to export. Leave empty to export all.</p>
+            </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-4 border-b">
+                <Input
+                  placeholder="Search by grave name..."
+                  value={searchExport}
+                  onChange={(e) => setSearchExport(e.target.value)}
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {filteredExportGraves.length === 0 ? (
+                  <p className="text-center py-12 text-muted-foreground">No graves found</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredExportGraves.map((grave) => (
+                      <Card key={grave.id} className="p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedGravesForExport.has(grave.id)}
+                            onCheckedChange={() => toggleGraveForExport(grave.id)}
+                          />
+                          <div>
+                            <h4 className="font-bold">{grave.grave_name}</h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {grave.date_of_death ? new Date(grave.date_of_death).toLocaleDateString() : "No DOD"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {grave.latitude?.toFixed(4)}, {grave.longitude?.toFixed(4)}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="border-t p-4 flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {filteredExportGraves.length} graves | Selected: {selectedGravesForExport.size}
+                </p>
+                <div className="flex items-center gap-3">
+                  <Select value={exportFormat} onValueChange={(v: any) => setExportFormat(v)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="json">JSON</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={handleExportGraves}>
+                    Export {selectedGravesForExport.size || "All"} as {exportFormat.toUpperCase()}
+                  </Button>
+                  <Button variant="outline" onClick={() => setExportDialogOpen(false)}>Close</Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
