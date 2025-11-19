@@ -5,12 +5,12 @@ import "leaflet/dist/leaflet.css";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-// Fix Leaflet icon issue in React/Vite
+// Fix default Leaflet marker icons in React
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
 export interface Grave {
@@ -37,27 +37,180 @@ interface CemeteryMapProps {
   userLocation: [number, number] | null;
 }
 
+// ──────────────────────────────────────────────────────────────
+// NEW ACCURATE WALKING PATH (from entrance to cemetery interior)
 const walkingPathCoords: [number, number][] = [
-  [11.495127981363993, 122.60979924526652],
+  [11.495127981363993, 122.60979924526652], // Entrance
   [11.494928651699666, 122.60981068705934],
   [11.49493986399753, 122.60992383368006],
   [11.494129749317906, 122.61007183039277],
   [11.494021562546706, 122.60986976342849],
-  [11.4949293748858, 122.60981066360614],
+  [11.4949293748858, 122.60981066360614], // End point
 ];
 
+// Cemetery blocks — beige plot areas
 const blockPolygons = {
-  type: "FeatureCollection",
+  type: "FeatureCollection" as const,
   features: [
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60987040151116, 11.49435013017984], [122.60987612430188, 11.494244418229997], [122.6100225745343, 11.494272277102695], [122.61000902871365, 11.494377659676218], [122.60987040151116, 11.49435013017984] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60981554913673, 11.49502281484294], [122.60982099305397, 11.494948841871974], [122.60996235249871, 11.494959169822494], [122.61010495751594, 11.494138354640597], [122.60984948830571, 11.493984556527707], [122.60985016559471, 11.493914867364467], [122.6101924352169, 11.494116866043242], [122.61001339863526, 11.495048618100952], [122.60981554913673, 11.49502281484294] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.6098790941748, 11.494223018125354], [122.60988526157496, 11.494144174653428], [122.6100376305659, 11.494172284764531], [122.61002413201857, 11.49425577544244], [122.6098790941748, 11.494223018125354] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60984377532583, 11.49478218793351], [122.6098604352303, 11.494656501557898], [122.60993400454879, 11.494671001465306], [122.60991271045344, 11.49479533754888], [122.60984377532583, 11.49478218793351] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60984714407147, 11.49463395899005], [122.60985722538004, 11.494527870320255], [122.60998036485552, 11.494552788438995], [122.60996452692461, 11.494656922941473], [122.60984714407147, 11.49463395899005] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.6098571634202, 11.494495527946839], [122.60986667566169, 11.494371285192358], [122.61000634310938, 11.49439781333021], [122.60998867820211, 11.494521986389458], [122.6098571634202, 11.494495527946839] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60988727431737, 11.494129398520016], [122.60989189833589, 11.49407078269418], [122.60998243694229, 11.494086210974416], [122.6099757279215, 11.494145672133854], [122.60988727431737, 11.494129398520016] ]] }},
-    { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[ [122.60982838264556, 11.494913303363461], [122.6098403088343, 11.49480363452912], [122.60991102134591, 11.494814847067829], [122.60989466789442, 11.494923540665837], [122.60982838264556, 11.494913303363461] ]] }}
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60987040151116, 11.49435013017984],
+          [122.60987612430188, 11.494244418229997],
+          [122.6100225745343, 11.494272277102695],
+          [122.61000902871365, 11.494377659676218],
+          [122.60987040151116, 11.49435013017984]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60981554913673, 11.49502281484294],
+          [122.60982099305397, 11.494948841871974],
+          [122.60996235249871, 11.494959169822494],
+          [122.61010495751594, 11.494138354640597],
+          [122.60984948830571, 11.493984556527707],
+          [122.60985016559471, 11.493914867364467],
+          [122.6101924352169, 11.494116866043242],
+          [122.61001339863526, 11.495048618100952],
+          [122.60981554913673, 11.49502281484294]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.6098790941748, 11.494223018125354],
+          [122.60988526157496, 11.494144174653428],
+          [122.6100376305659, 11.494172284764531],
+          [122.61002413201857, 11.49425577544244],
+          [122.6098790941748, 11.494223018125354]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60984377532583, 11.49478218793351],
+          [122.6098604352303, 11.494656501557898],
+          [122.60993400454879, 11.494671001465306],
+          [122.60991271045344, 11.49479533754888],
+          [122.60984377532583, 11.49478218793351]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60984714407147, 11.49463395899005],
+          [122.60985722538004, 11.494527870320255],
+          [122.60998036485552, 11.494552788438995],
+          [122.60996452692461, 11.494656922941473],
+          [122.60984714407147, 11.49463395899005]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.6098571634202, 11.494495527946839],
+          [122.60986667566169, 11.494371285192358],
+          [122.61000634310938, 11.49439781333021],
+          [122.60998867820211, 11.494521986389458],
+          [122.6098571634202, 11.494495527946839]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60988727431737, 11.494129398520016],
+          [122.60989189833589, 11.49407078269418],
+          [122.60998243694229, 11.494086210974416],
+          [122.6099757279215, 11.494145672133854],
+          [122.60988727431737, 11.494129398520016]
+        ]]
+      }
+    },
+    {
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [122.60982838264556, 11.494913303363461],
+          [122.6098403088343, 11.49480363452912],
+          [122.60991102134591, 11.494814847067829],
+          [122.60989466789442, 11.494923540665837],
+          [122.60982838264556, 11.494913303363461]
+        ]]
+      }
+    }
   ]
+};
+
+// Helper functions
+const formatDistance = (meters: number) => {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+};
+
+const formatDuration = (seconds: number) => {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours} hr ${remainingMinutes} min`;
+};
+
+const getManeuverIcon = (type: string, modifier?: string) => {
+  switch (type) {
+    case 'depart': return 'Start';
+    case 'arrive': return 'Finish';
+    case 'turn':
+    case 'new':
+    case 'continue':
+      if (modifier?.includes('left')) return 'Left Turn';
+      if (modifier?.includes('right')) return 'Right Turn';
+      return 'Straight Ahead';
+    default: return 'Forward';
+  }
+};
+
+const getClosestPointOnPath = (latlng: L.LatLng): L.LatLng => {
+  let minDist = Infinity;
+  let closest: [number, number] = walkingPathCoords[0];
+  walkingPathCoords.forEach(coord => {
+    const p = L.latLng(coord[0], coord[1]);
+    const dist = latlng.distanceTo(p);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = coord;
+    }
+  });
+  return L.latLng(closest[0], closest[1]);
 };
 
 const CemeteryMap = ({ selectedGrave, setSelectedGrave, userLocation }: CemeteryMapProps) => {
@@ -65,336 +218,412 @@ const CemeteryMap = ({ selectedGrave, setSelectedGrave, userLocation }: Cemetery
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const gravesLayerRef = useRef<L.LayerGroup | null>(null);
   const dynamicLayerRef = useRef<L.LayerGroup | null>(null);
-  const staticLayerRef = useRef<L.LayerGroup | null>(null);
+  const staticMarkersRef = useRef<L.LayerGroup | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
-  const graveLayersRef = useRef<L.Layer[]>([]);
-
   const { toast } = useToast();
+
   const [graves, setGraves] = useState<Grave[]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
   const [routeSteps, setRouteSteps] = useState<RouteStep[]>([]);
-  const [showRouteCard, setShowRouteCard] = useState(false);
+  const [isRouteCardVisible, setIsRouteCardVisible] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const arrivedRef = useRef(false);
+  const hasArrivedRef = useRef(false);
 
-  const COLORS = {
-    primary: "#1e4d3a",
-    path: "#a39f5a",
-    graveBody: "#e2e8f0",
-    headstone: "#2d3748",
-    accent: "#a39f5a"
-  };
+  // Theme colors
+  const PRIMARY_COLOR = "#2d5f3f";
+  const ROUTE_LINE_COLOR = "#2d5f3f";
+  const ENTRANCE_MARKER_COLOR = "#2d5f3f";
+  const GRAVE_HIGHLIGHT_COLOR = "#a39f5a";
 
-  const center: [number, number] = [11.4945215, 122.6100805];
-  const entrance: [number, number] = [11.495127981363993, 122.60979924526652];
+  const cemeteryCentroid: [number, number] = [11.4945215, 122.6100805];
+  const entranceLocation: [number, number] = [11.49508602798545, 122.60979891264897];
 
-  const formatDistance = (m: number) => m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(1)} km`;
-  const formatTime = (s: number) => {
-    const m = Math.round(s / 60);
-    return m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${m % 60}m`;
-  };
+  const cemeteryBoundary: [number, number][] = [
+    [11.495086199371954, 122.60979650734345],
+    [11.493881585771362, 122.60982924452287],
+    [11.494108374835463, 122.61020540340468],
+    [11.495115965795222, 122.61001343784352],
+    [11.495086199371954, 122.60979650734345]
+  ];
 
-  const speak = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+  // Voice Guidance
+  const speakInstructions = (steps: RouteStep[], totalDuration: number) => {
+    if (!('speechSynthesis' in window)) {
+      toast({ title: "Voice Error", description: "Your browser doesn't support speech synthesis.", variant: "destructive" });
+      return;
+    }
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 0.9;
-    utter.lang = "en-US";
-    utter.onstart = () => setIsSpeaking(true);
-    utter.onend = () => setIsSpeaking(false);
-    window.speechSynthesis.speak(utter);
+    setIsSpeaking(true);
+
+    const stepsText = steps.map((step, index) => {
+      const distanceStr = formatDistance(step.distance);
+      if (index === steps.length - 1) {
+        return `Finally, ${step.instruction}.`;
+      }
+      return `Next, ${step.instruction}. Walk for approximately ${distanceStr}.`;
+    }).join(' ');
+
+    const totalTimeStr = formatDuration(totalDuration);
+    const welcomeText = `Starting route. Total trip time is about ${totalTimeStr}.`;
+    const utterance = new SpeechSynthesisUtterance(welcomeText + ' ' + stepsText);
+
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
   };
 
-  // Map Setup
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  // Dynamic arrival detection
+  useEffect(() => {
+    if (!selectedGrave || !userLocation || hasArrivedRef.current) return;
+    if (!selectedGrave.latitude || !selectedGrave.longitude) return;
+
+    const graveLatLng = L.latLng(selectedGrave.latitude, selectedGrave.longitude);
+    const userLatLng = L.latLng(userLocation[0], userLocation[1]);
+    const distanceToGrave = userLatLng.distanceTo(graveLatLng);
+    const arrivalThreshold = 20;
+
+    if (distanceToGrave <= arrivalThreshold) {
+      if (hasArrivedRef.current) return;
+      window.speechSynthesis.cancel();
+
+      const arrivalText = `You have arrived at the grave of ${selectedGrave.grave_name}.`;
+      const utterance = new SpeechSynthesisUtterance(arrivalText);
+      window.speechSynthesis.speak(utterance);
+
+      toast({
+        title: "Destination Reached!",
+        description: `You are at ${selectedGrave.grave_name}'s grave.`,
+        variant: "default"
+      });
+
+      hasArrivedRef.current = true;
+      setIsSpeaking(false);
+    } else if (distanceToGrave > 50 && hasArrivedRef.current) {
+      hasArrivedRef.current = false;
+    }
+  }, [userLocation, selectedGrave, toast]);
+
+  // Map initialization
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    mapRef.current = L.map(mapContainerRef.current, {
-      center,
-      zoom: 18,
-      zoomControl: true,
-      attributionControl: true
-    });
+    const tileLayers = {
+      OpenStreetMap: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 20,
+      }),
+      CartoPositron: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png", {
+        attribution: '&copy; OpenStreetMap, &copy; CARTO',
+        maxZoom: 20,
+        subdomains: 'abcd',
+      }),
+      Satellite: L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        { attribution: "Tiles Esri", maxZoom: 19 }
+      ),
+    };
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; OpenStreetMap contributors & CARTO',
-      maxZoom: 20,
-      subdomains: "abcd"
-    }).addTo(mapRef.current);
+    mapRef.current = L.map(mapContainerRef.current, {
+      center: cemeteryCentroid,
+      zoom: 18,
+      layers: [tileLayers.CartoPositron],
+      zoomControl: true,
+      tap: true,
+      tapTolerance: 30,
+    });
 
     setTimeout(() => mapRef.current?.invalidateSize(), 100);
 
-    staticLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    staticMarkersRef.current = L.layerGroup().addTo(mapRef.current);
     gravesLayerRef.current = L.layerGroup().addTo(mapRef.current);
     dynamicLayerRef.current = L.layerGroup().addTo(mapRef.current);
 
-    L.polygon([
-      [11.495086199371954, 122.60979650734345],
-      [11.493881585771362, 122.60982924452287],
-      [11.494108374835463, 122.61020540340468],
-      [11.495115965795222, 122.61001343784352],
-      [11.495086199371954, 122.60979650734345]
-    ], { color: COLORS.primary, weight: 3, fillColor: COLORS.primary, fillOpacity: 0.12 })
-      .addTo(staticLayerRef.current);
+    L.control.layers({
+      "OpenStreetMap": tileLayers.OpenStreetMap,
+      "Carto Positron": tileLayers.CartoPositron,
+      "Satellite": tileLayers.Satellite
+    }, {}, { position: "topright" }).addTo(mapRef.current);
 
-    L.polyline(walkingPathCoords, { color: COLORS.path, weight: 9, opacity: 0.8 }).addTo(staticLayerRef.current);
-    L.polyline(walkingPathCoords, { color: "#fff", weight: 4, opacity: 0.9 }).addTo(staticLayerRef.current);
+    // Cemetery boundary
+    L.polygon(cemeteryBoundary, {
+      color: PRIMARY_COLOR,
+      weight: 3,
+      fillColor: PRIMARY_COLOR,
+      fillOpacity: 0.15,
+    }).addTo(mapRef.current);
 
+    // Cemetery blocks (beige plots)
+    L.geoJSON(blockPolygons, {
+      style: {
+        color: "#d4c9a8",
+        weight: 2,
+        fillColor: "#f5ede2",
+        fillOpacity: 0.7,
+      },
+    }).addTo(staticMarkersRef.current!);
+
+    // Walking path
+    L.polyline(walkingPathCoords, { color: GRAVE_HIGHLIGHT_COLOR, weight: 8, opacity: 0.75 })
+      .addTo(staticMarkersRef.current!);
+    L.polyline(walkingPathCoords, { color: "#ffffff", weight: 4, opacity: 0.9 })
+      .addTo(staticMarkersRef.current!);
+
+    // Entrance marker
     const entranceIcon = L.divIcon({
-      html: `<div style="background:${COLORS.primary};color:white;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:4px solid white;box-shadow:0 6px 20px rgba(0,0,0,0.3);">ENT</div>`,
+      html: `<div style="background:${ENTRANCE_MARKER_COLOR};color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;box-shadow:0 4px 16px ${ENTRANCE_MARKER_COLOR}80;border:3px solid white;">ENT</div>`,
       className: "",
-      iconSize: [44],
-      iconAnchor: [22, 22]
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     });
-    L.marker(entrance, { icon: entranceIcon, zIndexOffset: 1000 }).addTo(staticLayerRef.current);
+    L.marker(entranceLocation, { icon: entranceIcon, zIndexOffset: 1000 })
+      .addTo(staticMarkersRef.current!);
+  }, []);
 
-    L.geoJSON(blockPolygons as any, {
-      style: { color: "#999", weight: 2, fillColor: "#d9d2c2", fillOpacity: 0.85 },
-      onEachFeature: (_, layer) => {
-        layer.on({
-          mouseover: () => layer.setStyle({ fillOpacity: 0.98 }),
-          mouseout: () => layer.setStyle({ fillOpacity: 0.85 })
-        });
-      }
-    }).addTo(staticLayerRef.current);
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => window.speechSynthesis.cancel();
+  }, []);
+
+  // Handle resize
+  useEffect(() => {
+    const handleResize = () => mapRef.current?.invalidateSize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   // Fetch graves
   useEffect(() => {
-    supabase.from("graves").select("*").then(({ data, error }) => {
+    const fetchGraves = async () => {
+      const { data, error } = await supabase.from("graves").select("*");
       if (error) {
-        toast({ title: "Error loading graves", description: error.message, variant: "destructive" });
+        toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
         setGraves(data || []);
       }
-    });
+    };
+    fetchGraves();
   }, [toast]);
 
-  const getPopupHTML = (g: Grave) => {
-    const age = g.date_of_birth ? new Date(g.date_of_death || Date.now()).getFullYear() - new Date(g.date_of_birth).getFullYear() : null;
+  const calculateAge = (dob: string, dod?: string) => {
+    const birth = new Date(dob);
+    const end = dod ? new Date(dod) : new Date();
+    let age = end.getFullYear() - birth.getFullYear();
+    const m = end.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && end.getDate() < birth.getDate())) age--;
+    return age;
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  };
+
+  const getRichPopupContent = (grave: Grave) => {
+    const age = grave.date_of_birth ? calculateAge(grave.date_of_birth, grave.date_of_death) : "-";
     return `
-      <div style="font-family:system-ui,sans-serif;max-width:340px;padding:8px;">
-        ${g.grave_image_url ? `<img src="${g.grave_image_url}" style="width:100%;height:180px;object-fit:cover;border-radius:16px;margin-bottom:12px;" onerror="this.remove()"/>` : ''}
-        <h3 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111;">${g.grave_name}</h3>
-        ${age ? `<p style="margin:4px 0;color:#555;font-size:15px;"><strong>Age:</strong> ${age}</p>` : ''}
-        ${g.date_of_birth ? `<p style="margin:4px 0;color:#666;font-size:14px;">Born: ${new Date(g.date_of_birth).toLocaleDateString()}</p>` : ''}
-        ${g.date_of_death ? `<p style="margin:4px 0;color:#666;font-size:14px;">Passed: ${new Date(g.date_of_death).toLocaleDateString()}</p>` : ''}
-        ${g.additional_info ? `<div style="margin-top:12px;padding:12px;background:#f8fafc;border-radius:12px;font-size:14px;line-height:1.5;color:#444;">${g.additional_info.replace(/\n/g, '<br>')}</div>` : ''}
+      <div style="min-width:260px;max-width:340px;font-family:system-ui,-apple-system,sans-serif;">
+        ${grave.grave_image_url
+          ? `<img src="${grave.grave_image_url}" onerror="this.style.display='none'"
+                style="width:100%;height:170px;object-fit:cover;border-radius:14px;margin-bottom:14px;" alt="${grave.grave_name}" />`
+          : ""
+        }
+        <div style="padding:0 8px;">
+          <div style="font-weight:800;font-size:19px;color:#111827;margin-bottom:8px;">
+            ${grave.grave_name}
+          </div>
+          <div style="font-size:14px;color:#374151;margin-bottom:4px;"><strong>Age:</strong> ${age}</div>
+          ${grave.date_of_birth ? `<div style="font-size:13px;color:#4b5563;"><strong>Born:</strong> ${formatDate(grave.date_of_birth)}</div>` : ""}
+          ${grave.date_of_death ? `<div style="font-size:13px;color:#4b5563;margin-top:4px;"><strong>Passed:</strong> ${formatDate(grave.date_of_death)}</div>` : ""}
+          ${grave.additional_info
+            ? `<div style="margin-top:12px;padding:10px;background:#f3f4f6;border-radius:8px;font-size:13px;line-height:1.5;">
+                 ${grave.additional_info.replace(/\n/g, "<br>")}
+               </div>`
+            : ""
+          }
+        </div>
       </div>
     `;
   };
 
-  // Render Graves — With Initials Inside Grave (Real Cemetery Style)
+  // Render graves
   useEffect(() => {
     if (!mapRef.current || !gravesLayerRef.current) return;
     const layer = gravesLayerRef.current;
     layer.clearLayers();
-    graveLayersRef.current = [];
 
-    const zoom = mapRef.current.getZoom();
-    if (zoom < 18) return;
-
-    graves.forEach(grave => {
+    graves.forEach((grave) => {
       if (!grave.latitude || !grave.longitude) return;
-      const lat = grave.latitude;
-      const lng = grave.longitude;
 
-      // Adjusted grave box size
-      const body = L.rectangle(
-        [[lat - 0.000004, lng - 0.000012], [lat + 0.000025, lng + 0.000012]], // Reduced height and width
-        {
-          color: "#94a3b8",
-          weight: 1.2, // Slightly thinner border
-          fillColor: COLORS.graveBody,
-          fillOpacity: 0.96,
-        }
+      const rect = L.rectangle(
+        [[grave.latitude - 0.0000125, grave.longitude - 0.000025], [grave.latitude + 0.0000125, grave.longitude + 0.000025]],
+        { color: "#d9d9d9", weight: 1, fillColor: "#f5f5f5", fillOpacity: 1 }
       );
 
-      const headstone = L.rectangle(
-        [[lat + 0.000005, lng - 0.000010], [lat + 0.000018, lng + 0.000010]], // Adjusted headstone position and size
-        {
-          color: COLORS.headstone,
-          weight: 1,
-          fillColor: COLORS.headstone,
-          fillOpacity: 1,
-        }
-      );
+      rect.on("mouseover", () => rect.setStyle({ fillColor: "#e0e0e0", weight: 2 }));
+      rect.on("mouseout", () => rect.setStyle({ fillColor: "#f5f5f5", weight: 1 }));
 
-      const nameParts = grave.grave_name.trim().split(" ");
-      const firstInitial = nameParts[0]?.[0]?.toUpperCase() || "";
-      const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0];
-      const lastInitial = lastName?.[0]?.toUpperCase() || "";
-      const initials = `${firstInitial}.${lastInitial}`;
-
-      const labelText = grave.lot_number || (firstInitial && lastInitial ? initials : "PLOT");
-
-      // Label moved inside the grave box
-      const label = L.marker([lat - 0.00000005, lng], { // Centered vertically within the grave body
-        icon: L.divIcon({
-          html: `<div style="
-            color: #ffffffff;
-            font-family: Georgia, serif;
-            font-size: 7px; /* Slightly smaller font for label */
-            font-weight: 900;
-            letter-spacing: 1.2px;
-            text-shadow: 0 1px 1px rgba(0, 88, 129, 0.9);
-            pointer-events: none;
-            text-align: center;
-          ">${labelText}</div>`,
-          className: "grave-initials-label",
-          iconSize: [40, 20],
-          iconAnchor: [20, 10],
-        }),
-        interactive: false,
-        zIndexOffset: 900
+      const labelText = grave.lot_number || grave.grave_name.split(" ").map(w => w[0]).join("").toUpperCase();
+      const labelIcon = L.divIcon({
+        html: `<div style="font-size:10px;font-weight:bold;color:#4b5563;text-align:center;">${labelText}</div>`,
+        iconSize: [30, 14],
+        iconAnchor: [15, 7],
       });
 
-      const popup = getPopupHTML(grave);
+      const marker = L.marker([grave.latitude, grave.longitude], { icon: labelIcon });
+      const popupContent = getRichPopupContent(grave);
 
-      [body, headstone, label].forEach(item => {
-        item.bindPopup(popup, { maxWidth: 360, className: "grave-popup" });
-        item.on("click", () => setSelectedGrave(grave));
-        item.addTo(layer);
-        graveLayersRef.current.push(item);
-      });
+      rect.bindPopup(popupContent, { maxWidth: window.innerWidth < 480 ? 300 : 360, className: "custom-grave-popup" });
+      marker.bindPopup(popupContent, { maxWidth: window.innerWidth < 480 ? 300 : 360, className: "custom-grave-popup" });
 
-      body.on({
-        mouseover: () => {
-          body.setStyle({ fillColor: "#cbd5e1", weight: 2 }); // Highlight with slightly thicker border on hover
-        },
-        mouseout: () => {
-          body.setStyle({ fillColor: COLORS.graveBody, weight: 1.2 });
-        }
-      });
+      rect.on("click", () => setSelectedGrave(grave));
+      marker.on("click", () => setSelectedGrave(grave));
+
+      rect.addTo(layer);
+      marker.addTo(layer);
     });
   }, [graves, setSelectedGrave]);
 
-  // Zoom handling
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const handleZoom = () => {
-      const show = mapRef.current!.getZoom() >= 18;
-      if (show) {
-        graveLayersRef.current.forEach(l => l.addTo(gravesLayerRef.current!));
-      } else {
-        gravesLayerRef.current?.clearLayers();
-      }
-    };
-    mapRef.current.on("zoomend", handleZoom);
-    return () => mapRef.current?.off("zoomend", handleZoom);
-  }, []);
+  const handleGetDirections = () => {
+    if (routeInfo && routeSteps.length > 0) {
+      setIsRouteCardVisible(true);
+      speakInstructions(routeSteps, routeInfo.duration);
+      hasArrivedRef.current = false;
+    } else {
+      toast({ title: "Directions Not Ready", description: "Please wait for the route to load.", variant: "default" });
+    }
+  };
 
-  // Routing & Navigation
+  // Routing logic
   useEffect(() => {
-    if (!selectedGrave || !userLocation || !mapRef.current || !dynamicLayerRef.current) {
+    if (!mapRef.current || !dynamicLayerRef.current || !selectedGrave || !userLocation) {
       dynamicLayerRef.current?.clearLayers();
       routeLineRef.current?.remove();
       setRouteInfo(null);
       setRouteSteps([]);
-      setShowRouteCard(false);
-      arrivedRef.current = false;
+      setIsRouteCardVisible(false);
+      stopSpeaking();
+      hasArrivedRef.current = false;
       return;
     }
 
     const layer = dynamicLayerRef.current;
     layer.clearLayers();
+    routeLineRef.current?.remove();
 
-    const gravePos = L.latLng(selectedGrave.latitude!, selectedGrave.longitude!);
+    const graveLatLng = L.latLng(selectedGrave.latitude!, selectedGrave.longitude!);
+    const closestOnPath = getClosestPointOnPath(graveLatLng);
 
-    L.marker(gravePos, {
-      icon: L.divIcon({
-        html: `<div style="width:44px;height:44px;background:${COLORS.accent};border:6px solid white;border-radius:50%;box-shadow:0 0 40px ${COLORS.accent}99;animation:pulse 2s infinite;"></div>`,
-        className: "pulse-marker",
-        iconSize: [44, 44],
-        iconAnchor: [22, 22]
-      }),
-      zIndexOffset: 5000
-    }).addTo(layer)
-      .bindPopup(getPopupHTML(selectedGrave), { maxWidth: 380 })
+    const pulsingIcon = L.divIcon({
+      html: `<div style="width:38px;height:38px;border-radius:50%;background:${GRAVE_HIGHLIGHT_COLOR};border:5px solid white;box-shadow:0 0 30px ${GRAVE_HIGHLIGHT_COLOR}80;animation:pulse 2s infinite;"></div>`,
+      className: "pulsing-marker",
+      iconSize: [38, 38],
+      iconAnchor: [19, 19],
+    });
+
+    L.marker(graveLatLng, { icon: pulsingIcon, zIndexOffset: 3000 })
+      .addTo(layer)
+      .bindPopup(getRichPopupContent(selectedGrave), { maxWidth: 380, className: "custom-grave-popup" })
       .openPopup();
 
-    mapRef.current.setView(gravePos, 19);
+    mapRef.current.setView(graveLatLng, 19);
 
-    fetch(`https://router.project-osrm.org/route/v1/walking/${userLocation[1]},${userLocation[0]};${entrance[1]},${entrance[0]}?overview=full&geometries=geojson&steps=true`)
-      .then(r => r.json())
+    const start = `${userLocation[1]},${userLocation[0]}`;
+    const entrance = `${entranceLocation[1]},${entranceLocation[0]}`;
+
+    fetch(`https://router.project-osrm.org/route/v1/walking/${start};${entrance}?overview=full&geometries=geojson&steps=true`)
+      ?.then(r => r.json())
       .then(data => {
-        if (!data.routes?.[0]) return;
-        const route = data.routes[0];
-        const coords = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+        let fullRoute: [number, number][] = [];
+        const route = data.routes?.[0];
 
-        setRouteInfo({ distance: route.distance, duration: route.duration });
-        const steps = route.legs[0].steps.map((s: any) => ({
-          instruction: s.maneuver.instruction || "Continue straight",
-          distance: s.distance,
-          duration: s.duration
-        }));
-        steps.push({ instruction: `Walk inside cemetery to ${selectedGrave.grave_name}`, distance: 0, duration: 0 });
-        setRouteSteps(steps);
+        if (route?.geometry?.coordinates) {
+          fullRoute = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
 
-        const closestIdx = walkingPathCoords.findIndex(p =>
-          Math.abs(p[0] - gravePos.lat) < 0.00003 && Math.abs(p[1] - gravePos.lng) < 0.00003
+          setRouteInfo({ distance: route.distance, duration: route.duration });
+
+          const steps: RouteStep[] = [];
+          route.legs[0]?.steps.forEach((step: any) => {
+            if (step.maneuver?.instruction?.trim()) {
+              steps.push({
+                instruction: step.maneuver.instruction,
+                distance: step.distance,
+                duration: step.duration,
+              });
+            }
+          });
+
+          steps.push({
+            instruction: `Continue into the cemetery and proceed to the grave of ${selectedGrave.grave_name}.`,
+            distance: 0,
+            duration: 0,
+          });
+
+          setRouteSteps(steps);
+        }
+
+        const closestIndex = walkingPathCoords.findIndex(p =>
+          Math.abs(p[0] - closestOnPath.lat) < 0.00002 && Math.abs(p[1] - closestOnPath.lng) < 0.00002
         );
-        const internal = closestIdx >= 0 ? walkingPathCoords.slice(0, closestIdx + 2) : [];
 
-        routeLineRef.current = L.polyline([...coords, ...internal.slice(1), [gravePos.lat, gravePos.lng]], {
-          color: COLORS.primary,
-          weight: 9,
+        const internalPath = closestIndex >= 0
+          ? walkingPathCoords.slice(0, closestIndex + 1)
+          : walkingPathCoords.slice(0, Math.min(15, walkingPathCoords.length));
+
+        internalPath.push([graveLatLng.lat, graveLatLng.lng]);
+        fullRoute.push(...internalPath.slice(1));
+
+        routeLineRef.current = L.polyline(fullRoute, {
+          color: ROUTE_LINE_COLOR,
+          weight: 8,
           opacity: 0.95,
-          smoothFactor: 1
         }).addTo(layer);
       })
       .catch(() => {
-        toast({ title: "Routing unavailable", description: "Using direct path", variant: "destructive" });
+        const fallback = [userLocation, entranceLocation, [graveLatLng.lat, graveLatLng.lng]];
+        routeLineRef.current = L.polyline(fallback, { color: ROUTE_LINE_COLOR, weight: 8, opacity: 0.95 }).addTo(layer);
+        toast({ title: "Routing Error", description: "Using fallback route.", variant: "destructive" });
       });
-  }, [selectedGrave, userLocation, toast]);
-
-  // Arrival detection
-  useEffect(() => {
-    if (!selectedGrave || !userLocation || arrivedRef.current) return;
-    const dist = L.latLng(userLocation[0], userLocation[1]).distanceTo(
-      L.latLng(selectedGrave.latitude!, selectedGrave.longitude!)
-    );
-    if (dist <= 18) {
-      speak(`You have arrived at the grave of ${selectedGrave.grave_name}.`);
-      toast({ title: "Arrived", description: `${selectedGrave.grave_name}`, variant: "default" });
-      arrivedRef.current = true;
-    }
-  }, [userLocation, selectedGrave, toast]);
+  }, [selectedGrave, userLocation]);
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-gray-50">
-      <div ref={mapContainerRef} className="absolute inset-0" />
+    <div className="w-full h-screen md:h-full relative">
+      <div ref={mapContainerRef} className="w-full h-full rounded-lg" style={{ minHeight: "100vh" }} />
 
-      {showRouteCard && routeInfo && selectedGrave && (
-        <div className="absolute top-4 right-4 z-[9999] w-80 max-w-[92vw] bg-white rounded-2xl shadow-2xl overflow-hidden">
-          <div className="p-5 border-b">
-            <div className="flex justify-between items-start mb-2">
-              <h2 className="text-xl font-bold text-gray-800">Route to {selectedGrave.grave_name}</h2>
-              <button onClick={() => setShowRouteCard(false)} className="text-gray-400 hover:text-gray-700 text-2xl">×</button>
-            </div>
-            <div className="flex justify-between items-end">
-              <div>
-                <p className="text-3xl font-black" style={{ color: COLORS.primary }}>{formatTime(routeInfo.duration)}</p>
-                <p className="text-sm text-gray-600">{formatDistance(routeInfo.distance)}</p>
-              </div>
-              <button
-                onClick={() => isSpeaking ? window.speechSynthesis.cancel() : speak(routeSteps.map(s => s.instruction).join(". "))}
-                className="px-5 py-3 rounded-xl text-white font-bold shadow-lg"
-                style={{ backgroundColor: isSpeaking ? "#dc2626" : COLORS.primary }}
-              >
-                {isSpeaking ? "Stop" : "Start"} Voice
-              </button>
-            </div>
+      {/* Route Details Card */}
+      {isRouteCardVisible && selectedGrave && routeInfo && (
+        <div className="absolute top-4 right-4 z-[9999] bg-white rounded-xl shadow-2xl p-4 max-w-xs w-[90%] md:w-80 max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4 border-b pb-2">
+            <h3 className="font-bold text-lg text-gray-800 truncate">Route to {selectedGrave.grave_name}</h3>
+            <button onClick={() => { setIsRouteCardVisible(false); stopSpeaking(); }} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
           </div>
-          <div className="p-4 max-h-96 overflow-y-auto space-y-3">
+          <div className="mb-4">
+            <p className="text-xl font-extrabold" style={{ color: PRIMARY_COLOR }}>{formatDuration(routeInfo.duration)}</p>
+            <p className="text-sm text-gray-500">Distance: {formatDistance(routeInfo.distance)}</p>
+          </div>
+          <div className="mb-4">
+            <button
+              onClick={isSpeaking ? stopSpeaking : () => speakInstructions(routeSteps, routeInfo.duration)}
+              style={{ backgroundColor: isSpeaking ? '#ef4444' : PRIMARY_COLOR }}
+              className="w-full text-white font-bold py-2 px-4 rounded-lg shadow-md flex items-center justify-center"
+            >
+              <span className="mr-2">{isSpeaking ? 'Stop' : 'Speak'}</span>
+              {isSpeaking ? 'Stop Voice Guidance' : 'Start Voice Guidance'}
+            </button>
+          </div>
+          <div className="space-y-3">
+            <h4 className="font-bold text-sm uppercase tracking-wider text-gray-700">Steps</h4>
             {routeSteps.map((step, i) => (
-              <div key={i} className="flex gap-3 text-sm">
-                <div className="mt-1 text-lg">{i === routeSteps.length - 1 ? "Finish" : "Straight"}</div>
+              <div key={i} className="flex items-start space-x-3">
+                <div className="mt-0.5 text-lg">{i === routeSteps.length - 1 ? 'Finish' : 'Forward'}</div>
                 <div>
-                  <p className="font-medium text-gray-800">{step.instruction}</p>
-                  {i < routeSteps.length - 1 && (
-                    <p className="text-xs text-gray-500">{formatDistance(step.distance)} • {formatTime(step.duration)}</p>
-                  )}
+                  <p className="text-sm font-medium text-gray-800">{step.instruction}</p>
+                  <p className="text-xs text-gray-500">{formatDistance(step.distance)} • {formatDuration(step.duration)}</p>
                 </div>
               </div>
             ))}
@@ -402,38 +631,29 @@ const CemeteryMap = ({ selectedGrave, setSelectedGrave, userLocation }: Cemetery
         </div>
       )}
 
-      {selectedGrave && userLocation && routeInfo && !showRouteCard && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[9999]">
-          <div className="bg-white rounded-2xl shadow-2xl px-6 py-4 flex items-center gap-4">
-            <div>
-              <p className="text-xs text-gray-500">Destination</p>
-              <p className="font-bold text-lg text-gray-800">{selectedGrave.grave_name}</p>
-            </div>
-            <button
-              onClick={() => {
-                setShowRouteCard(true);
-                speak(`Starting route to ${selectedGrave.grave_name}. ${formatTime(routeInfo.duration)} walking time.`);
-              }}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-700 to-emerald-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-shadow"
-            >
-              Get Directions
-            </button>
+      {/* Bottom Route Trigger */}
+      {selectedGrave && userLocation && routeInfo && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[9999] bg-white rounded-xl shadow-2xl p-3 flex items-center space-x-4 w-[90%] max-w-sm">
+          <div className="flex-1">
+            <p className="text-xs text-gray-500">Route to</p>
+            <p className="font-semibold truncate">{selectedGrave.grave_name}</p>
           </div>
+          <button onClick={handleGetDirections} style={{ backgroundColor: PRIMARY_COLOR }} className="text-white font-bold py-2 px-4 rounded-lg">
+            View Route
+          </button>
         </div>
       )}
 
-      {/* FIXED: Removed the unsupported 'jsx' prop from the style tag */}
-      <style>{`
+      <style jsx>{`
         @keyframes pulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 ${COLORS.accent}99; }
-          70% { transform: scale(1.25); box-shadow: 0 0 0 20px transparent; }
+          0%, 100% { transform: scale(0.9); box-shadow: 0 0 0 0 ${GRAVE_HIGHLIGHT_COLOR}80; }
+          70% { transform: scale(1.15); box-shadow: 0 0 0 18px transparent; }
         }
-        .pulse-marker > div { animation: pulse 2s infinite; }
-        .grave-popup .leaflet-popup-content-wrapper {
-          border-radius: 18px !important;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.25) !important;
+        .pulsing-marker > div { animation: pulse 2s infinite; }
+        .custom-grave-popup .leaflet-popup-content-wrapper {
+          border-radius: 16px !important;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.22) !important;
         }
-        .grave-popup .leaflet-popup-content { margin: 12px !important; }
       `}</style>
     </div>
   );
