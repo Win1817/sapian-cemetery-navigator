@@ -81,6 +81,57 @@ const getClosestPointOnPath = (target: L.LatLng): L.LatLng => {
   return closest;
 };
 
+// Find the closest point ON a line segment (not just at endpoints)
+const getClosestPointOnSegment = (target: L.LatLng, p1: L.LatLng, p2: L.LatLng): { point: L.LatLng; distance: number } => {
+  const dx = p2.lng - p1.lng;
+  const dy = p2.lat - p1.lat;
+  const lengthSq = dx * dx + dy * dy;
+  
+  if (lengthSq === 0) {
+    return { point: p1, distance: target.distanceTo(p1) };
+  }
+  
+  // Calculate projection of target onto the line segment
+  let t = ((target.lng - p1.lng) * dx + (target.lat - p1.lat) * dy) / lengthSq;
+  t = Math.max(0, Math.min(1, t)); // Clamp to segment
+  
+  const closestPoint = L.latLng(
+    p1.lat + t * dy,
+    p1.lng + t * dx
+  );
+  
+  return {
+    point: closestPoint,
+    distance: target.distanceTo(closestPoint)
+  };
+};
+
+// Find the closest point anywhere on the walking path linestring
+const getClosestPointOnPath_LineString = (target: L.LatLng): { point: L.LatLng; segmentIndex: number } => {
+  let closestPoint = walkingPathCoords[0];
+  let closestDist = Infinity;
+  let closestSegmentIndex = 0;
+  
+  // Check all line segments
+  for (let i = 0; i < walkingPathCoords.length - 1; i++) {
+    const p1 = L.latLng(walkingPathCoords[i][0], walkingPathCoords[i][1]);
+    const p2 = L.latLng(walkingPathCoords[i + 1][0], walkingPathCoords[i + 1][1]);
+    
+    const { point, distance } = getClosestPointOnSegment(target, p1, p2);
+    
+    if (distance < closestDist) {
+      closestDist = distance;
+      closestPoint = [point.lat, point.lng];
+      closestSegmentIndex = i;
+    }
+  }
+  
+  return {
+    point: L.latLng(closestPoint[0], closestPoint[1]),
+    segmentIndex: closestSegmentIndex
+  };
+};
+
 // --- COMPONENT ---
 const CemeteryMap = ({
   selectedGrave,
@@ -335,11 +386,13 @@ const CemeteryMap = ({
       polygon.addTo(boundaryLayerRef.current!);
 
       // Render pin icon for assigned lots (when grave_id exists)
-      if (isLot && p.grave_id && grave) {
+      if (isLot && p.grave_id) {
+        console.log(`🔍 PIN DEBUG: Rendering pin for lot ${p.name}, grave_id: ${p.grave_id}, grave found: ${!!grave}`);
         const latSum = p.coordinates.reduce((sum, coord) => sum + coord[0], 0);
         const lngSum = p.coordinates.reduce((sum, coord) => sum + coord[1], 0);
         const centroidLat = latSum / p.coordinates.length;
         const centroidLng = lngSum / p.coordinates.length;
+        console.log(`  Centroid: [${centroidLat}, ${centroidLng}]`);
         const pinIcon = L.divIcon({
           html: `<div style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; position: relative;">
             <svg width="24" height="24" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -357,13 +410,19 @@ const CemeteryMap = ({
           zIndexOffset: 500,
         });
 
+        const graveName = grave?.grave_name || "Unknown Grave";
         pinMarker.bindPopup(
-          `<div style="font-weight:bold;color:#dc2626;">📍 ${grave.grave_name}</div>
+          `<div style="font-weight:bold;color:#dc2626;">📍 ${graveName}</div>
            <p style="margin:4px 0; font-size:12px;">Assigned to ${p.name}</p>`
         );
 
-        pinMarker.on("click", () => setSelectedGrave(grave));
+        if (grave) {
+          pinMarker.on("click", () => setSelectedGrave(grave));
+        }
         pinMarker.addTo(boundaryLayerRef.current!);
+        console.log(`  ✅ Pin marker added to map`);
+      } else if (isLot) {
+        console.log(`⏭️  SKIPPED: Lot ${p.name} - isLot: ${isLot}, grave_id: ${p.grave_id}`);
       }
 
       // Add labels for Block Name and Lot Number
@@ -431,7 +490,12 @@ const CemeteryMap = ({
     const centroidLng = lngSum / polygon.coordinates.length;
 
     const graveLatLng = L.latLng(centroidLat, centroidLng);
-    const closest = getClosestPointOnPath(graveLatLng);
+    
+    // Snap to the NEAREST POINT ON THE LINESTRING (not just nearest coordinate)
+    const { point: snapPointLatLng, segmentIndex } = getClosestPointOnPath_LineString(graveLatLng);
+    const snapPoint: [number, number] = [snapPointLatLng.lat, snapPointLatLng.lng];
+    
+    console.log(`🔧 SNAP DEBUG: Grave at [${centroidLat.toFixed(5)}, ${centroidLng.toFixed(5)}] snapped to [${snapPoint[0].toFixed(5)}, ${snapPoint[1].toFixed(5)}] on segment ${segmentIndex}`);
 
     // Grave Highlight Marker
     const pulsing = L.divIcon({
@@ -462,10 +526,19 @@ const CemeteryMap = ({
         const route = data.routes?.[0];
         let externalRouteCoords: [number, number][] = [];
         
-        // Internal Path Routing (Entrance -> Grave) - Calculate first before using in steps
-        const idx = walkingPathCoords.findIndex((p) => Math.abs(p[0] - closest.lat) < 0.00002 && Math.abs(p[1] - closest.lng) < 0.00002);
-        const internalPath = idx >= 0 ? walkingPathCoords.slice(0, idx + 1) : [entranceLocation];
-        const snapPoint: [number, number] = [closest.lat, closest.lng];
+        // Internal Path Routing (Entrance -> Snap Point on path)
+        // Build path up to and including the segment containing the snap point
+        const internalPath: [number, number][] = [];
+        
+        // Add all waypoints up to the segment containing the snap point
+        for (let i = 0; i <= segmentIndex && i < walkingPathCoords.length; i++) {
+          internalPath.push(walkingPathCoords[i]);
+        }
+        
+        // Add the snap point itself (if it's not already a waypoint)
+        if (internalPath[internalPath.length - 1][0] !== snapPoint[0] || internalPath[internalPath.length - 1][1] !== snapPoint[1]) {
+          internalPath.push(snapPoint);
+        }
         
         if (route) {
           externalRouteCoords = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]]);

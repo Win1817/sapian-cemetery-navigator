@@ -98,12 +98,12 @@ const Index = () => {
 
   // ---------------------
   // Load polygons from Supabase and convert GeoJSON -> [lat, lng][]
-  // Also fetch grave data including lot assignments via lot_block_id
+  // Graves are now assigned directly via lot.grave_id FK
   // ---------------------
   const loadPolygons = async () => {
     setLoadingPolygons(true);
     try {
-      // First, fetch lot_polygons with their associated lots data
+      // Fetch lot_polygons with their associated lots data including the grave_id
       const { data: polygonsData, error: polygonsError } = await supabase
         .from("lot_polygons")
         .select(`
@@ -116,6 +116,7 @@ const Index = () => {
             lot_number,
             block_id,
             is_available,
+            grave_id,
             blocks (block_name)
           )
         `)
@@ -133,32 +134,37 @@ const Index = () => {
         return;
       }
 
-      // Collect all lot IDs to find graves assigned to them
-      const lotIds = new Set<string>();
+      // Collect all grave IDs from lots to fetch their details
+      const graveIds = new Set<string>();
       polygonsData.forEach((row: any) => {
         const lot = row.lots?.[0];
-        if (lot?.id) {
-          lotIds.add(lot.id);
+        if (lot?.grave_id) {
+          graveIds.add(lot.grave_id);
         }
       });
 
-      // Fetch all graves and check if they have lot assignments
+      // Fetch grave details for all assigned graves
       let gravesMap = new Map<string, any>();
       try {
-        // Fetch all graves - the lot_block_id column exists in the database
-        const { data: allGraves, error: gravesError } = await (supabase
-          .from("graves") as any)
-          .select("*");
+        if (graveIds.size > 0) {
+          const { data: gravesData, error: gravesError } = await supabase
+            .from("graves")
+            .select("*")
+            .in("id", Array.from(graveIds));
 
-        if (!gravesError && allGraves && allGraves.length > 0) {
-          allGraves.forEach((grave: any) => {
-            // The lot_block_id column exists in the database
-            if (grave.lot_block_id && lotIds.has(grave.lot_block_id)) {
-              gravesMap.set(grave.lot_block_id, grave);
-            }
-          });
+          console.log(`📊 GRAVES DEBUG: Fetched ${gravesData?.length || 0} grave details for ${graveIds.size} assigned graves`);
+          
+          if (!gravesError && gravesData && gravesData.length > 0) {
+            gravesData.forEach((grave: any) => {
+              gravesMap.set(grave.id, grave);
+            });
+          }
+          console.log(`📊 gravesMap size: ${gravesMap.size}`);
+        } else {
+          console.log(`📊 GRAVES DEBUG: No graves assigned to any lots`);
         }
       } catch (err) {
+        console.error("Error fetching grave details:", err);
       }
 
       // Map polygons with lot data and grave info
@@ -184,7 +190,8 @@ const Index = () => {
         }
 
         const lot = row.lots?.[0];
-        const grave = lot?.id ? gravesMap.get(lot.id) : null;
+        // Get the grave assigned to this lot (via lot.grave_id FK)
+        const grave = lot?.grave_id ? gravesMap.get(lot.grave_id) : null;
 
         return {
           id: row.id,
@@ -192,7 +199,7 @@ const Index = () => {
           coordinates: coordsLatLng,
           type: "lot",
           is_available: lot?.is_available ?? true,
-          grave_id: grave?.id || null,
+          grave_id: lot?.grave_id || null,  // Use lot.grave_id directly
           grave: grave || null, // Include the full grave object for map rendering
         };
       });
@@ -310,7 +317,7 @@ const Index = () => {
         <div className="h-[calc(100vh-220px)] rounded-lg overflow-hidden shadow-medium border border-border/50 relative z-0">
           <CemeteryMap
             selectedGrave={selectedGrave}
-            setSelectedGrave={setSelectedGrave}
+            setSelectedGrave={(grave) => setSelectedGrave(grave)}
             userLocation={userLocation}
             mapConfig={runtimeMapConfig}
           />

@@ -229,6 +229,11 @@ const Admin = () => {
         created_at: lot.created_at,
       }));
 
+      console.log(`📋 LOTS DEBUG: Fetched ${mappedLots.length} lots:`, mappedLots.map(l => ({ 
+        name: l.display_name, 
+        is_available: l.is_available 
+      })));
+
       setLots(mappedLots);
     } catch (err: any) {
       toast({ title: "Failed to load lots", description: err.message, variant: "destructive" });
@@ -267,23 +272,16 @@ const Admin = () => {
 
   const handleAssignLot = async (lotId: string, graveId: string) => {
     try {
-      // Update the lot to mark it as not available
+      console.log(`📌 ASSIGNING: Grave ${graveId} to Lot ${lotId}`);
+      
+      // Update the lot to assign the grave and mark as not available
       const { error: lotError } = await (supabase.from("lots") as any)
-        .update({ is_available: false })
+        .update({ grave_id: graveId, is_available: false })
         .eq("id", lotId);
 
       if (lotError) throw lotError;
 
-      // Update the grave to assign it to this lot via lot_block_id
-      const { error: graveError, data: graveData } = await supabase
-        .from("graves")
-        .update({ lot_block_id: lotId })
-        .eq("id", graveId);
-
-      if (graveError) {
-        throw graveError;
-      }
-
+      console.log(`✅ ASSIGNED: Grave ${graveId} to Lot ${lotId}`);
       toast({ title: "Success!", description: "Lot has been assigned to grave" });
       setAssigningLotId(null);
       fetchLots();
@@ -293,40 +291,18 @@ const Admin = () => {
     }
   };
 
-  const handleUnassignLot = async (graveId: string) => {
+  const handleUnassignLot = async (lotId: string) => {
     try {
-      // Update the grave to remove the lot assignment
-      const { error: graveError } = await supabase
-        .from("graves")
-        .update({ lot_block_id: null })
-        .eq("id", graveId);
+      console.log(`📌 UNASSIGNING: Lot ${lotId}`);
+      
+      // Update the lot to clear grave_id and mark as available
+      const { error: lotError } = await (supabase.from("lots") as any)
+        .update({ grave_id: null, is_available: true })
+        .eq("id", lotId);
 
-      if (graveError) throw graveError;
+      if (lotError) throw lotError;
 
-      // Fetch all graves to find the ones now without lots
-      const { data: allGraves } = await supabase
-        .from("graves")
-        .select("*");
-
-      if (allGraves) {
-        // Find all lots that no longer have graves assigned
-        const { data: allLots } = await supabase.from("lots").select("*");
-        
-        if (allLots) {
-          const gravesWithAssignments = allGraves.filter(g => g.lot_block_id !== null);
-          const usedLotIds = new Set(gravesWithAssignments.map(g => g.lot_block_id));
-
-          // Mark unused lots as available
-          for (const lot of allLots) {
-            if (!usedLotIds.has(lot.id) && !lot.is_available) {
-              await (supabase.from("lots") as any)
-                .update({ is_available: true })
-                .eq("id", lot.id);
-            }
-          }
-        }
-      }
-
+      console.log(`✅ UNASSIGNED: Lot ${lotId}`);
       toast({ title: "Success!", description: "Grave has been unassigned from lot" });
       fetchLots();
       fetchGravesWithoutLots();
@@ -338,21 +314,20 @@ const Admin = () => {
 
   const handleUnassignLotById = async (lotId: string) => {
     try {
-      // Find the grave assigned to this lot
-      const { data: graveData, error: graveError } = await supabase
-        .from("graves")
-        .select("id")
-        .eq("lot_block_id", lotId)
-        .single();
+      console.log(`📌 UNASSIGNING LOT BY ID: ${lotId}`);
+      
+      // Simply clear the grave_id from the lot and mark as available
+      const { error: lotError } = await (supabase.from("lots") as any)
+        .update({ grave_id: null, is_available: true })
+        .eq("id", lotId);
 
-      if (graveError && graveError.code !== "PGRST116") throw graveError;
+      if (lotError) throw lotError;
 
-      if (graveData) {
-        // Unassign the grave
-        await handleUnassignLot(graveData.id);
-      } else {
-        toast({ title: "Info", description: "No grave assigned to this lot" });
-      }
+      console.log(`✅ LOT UNASSIGNED: ${lotId}`);
+      toast({ title: "Success!", description: "Grave has been unassigned from lot" });
+      fetchLots();
+      fetchGravesWithoutLots();
+      setRefreshGraves((prev) => !prev);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to unassign lot", variant: "destructive" });
     }
@@ -360,20 +335,8 @@ const Admin = () => {
 
   const handleDeleteLot = async (lotId: string) => {
     try {
-      // First, unassign any graves from this lot
-      const { data: gravesWithLot } = await supabase
-        .from("graves")
-        .select("id")
-        .eq("lot_block_id", lotId);
-
-      if (gravesWithLot && gravesWithLot.length > 0) {
-        for (const grave of gravesWithLot) {
-          await supabase
-            .from("graves")
-            .update({ lot_block_id: null })
-            .eq("id", grave.id);
-        }
-      }
+      // The lot.grave_id foreign key has ON DELETE SET NULL, so graves will be auto-cleared
+      // No need to manually unassign them
 
       // Get the polygon_id associated with this lot
       const { data: lotData, error: fetchError } = await supabase
@@ -414,32 +377,94 @@ const Admin = () => {
     setIsSavingLot(true);
     try {
       if (editingLot) {
-        // Update existing lot: use the create_lot_with_polygon_new RPC with the existing ID
-        // First delete the old polygon, then recreate via RPC
+        // Update existing lot by modifying the coordinates and lot info directly
+        // First, unassign any graves from this lot to avoid constraint issues
+        const { data: gravesWithLot } = await supabase
+          .from("graves")
+          .select("id")
+          .eq("lot_block_id", editingLot.id);
+
+        if (gravesWithLot && gravesWithLot.length > 0) {
+          for (const grave of gravesWithLot) {
+            await supabase
+              .from("graves")
+              .update({ lot_block_id: null })
+              .eq("id", grave.id);
+          }
+        }
+
+        // Get the polygon_id
         const { data: lotRecord } = await supabase
           .from("lots")
-          .select("polygon_id")
+          .select("polygon_id, block_id")
           .eq("id", editingLot.id)
           .single();
 
-        if (lotRecord?.polygon_id) {
-          // Delete old polygon
-          await supabase.from("lot_polygons").delete().eq("id", lotRecord.polygon_id);
+        if (!lotRecord) throw new Error("Lot not found");
+
+        // Update polygon coordinates if polygon exists
+        if (lotRecord.polygon_id) {
+          try {
+            const { error: polygonError } = await supabase
+              .from("lot_polygons")
+              .update({
+                coordinates: lotData.polygon_coordinates,
+                centroid_lat: lotData.centroid_lat,
+                centroid_lng: lotData.centroid_lng,
+              })
+              .eq("id", lotRecord.polygon_id);
+
+            if (polygonError) {
+              throw polygonError;
+            }
+          } catch (polyErr: any) {
+            // Log polygon update error but continue with lot update
+            console.warn("Polygon update warning:", polyErr.message);
+            toast({
+              title: "Polygon Update Warning",
+              description: "Could not update polygon coordinates, but lot data will be saved.",
+              variant: "default",
+            });
+          }
         }
 
-        // Delete the old lot record
-        await supabase.from("lots").delete().eq("id", editingLot.id);
+        // Get or create block
+        let blockId = lotRecord.block_id;
+        if (!blockId) {
+          const { data: blockData, error: blockError } = await supabase
+            .from("blocks")
+            .select("id")
+            .eq("block_name", lotData.block.trim())
+            .single();
 
-        // Recreate using the RPC (this handles block lookup/creation and lot creation)
-        const { error } = await supabase.rpc("create_lot_with_polygon_new", {
-          _block_name: lotData.block.trim(),
-          _lot_number: lotData.lot.trim(),
-          _coordinates: lotData.polygon_coordinates,
-          _centroid_lat: lotData.centroid_lat,
-          _centroid_lng: lotData.centroid_lng,
-        });
+          if (blockError && blockError.code !== "PGRST116") {
+            throw blockError;
+          }
 
-        if (error) throw error;
+          if (blockData) {
+            blockId = blockData.id;
+          } else {
+            const { data: newBlock, error: createBlockError } = await supabase
+              .from("blocks")
+              .insert({ block_name: lotData.block.trim() })
+              .select("id")
+              .single();
+
+            if (createBlockError) throw createBlockError;
+            blockId = newBlock.id;
+          }
+        }
+
+        // Update lot
+        const { error: lotError } = await supabase
+          .from("lots")
+          .update({
+            lot_number: lotData.lot.trim(),
+            block_id: blockId,
+          })
+          .eq("id", editingLot.id);
+
+        if (lotError) throw lotError;
 
         toast({
           title: "Success!",
