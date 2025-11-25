@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Source code
+src/
+public/
+supabase/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
