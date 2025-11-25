@@ -1,12 +1,12 @@
-// src/pages/Index.tsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import CemeteryMap from "@/components/map/CemeteryMap";
+import CemeteryMap, { MapPolygon } from "@/components/map/CemeteryMap";
 import SearchBar from "@/components/map/SearchBar";
 import { Leaf, MapPin, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { MAP_CONFIG } from "@/components/map/mapConfig";
 
 interface Grave {
   id: string;
@@ -29,9 +29,15 @@ const Index = () => {
   const [user, setUser] = useState<any>(null);
   const [locationEnabled, setLocationEnabled] = useState(false);
 
+  // map data
+  const [polygons, setPolygons] = useState<MapPolygon[]>([]);
+  const [graves, setGraves] = useState<any[]>([]);
+  const [loadingPolygons, setLoadingPolygons] = useState(false);
+
   useEffect(() => {
     checkUser();
     requestLocation();
+    loadPolygons();
   }, []);
 
   const checkUser = async () => {
@@ -90,8 +96,70 @@ const Index = () => {
     }
   };
 
-  const handleStartPointSelected = (location: [number, number]) => {
-    setUserLocation(location);
+  // ---------------------
+  // Load polygons from Supabase and convert GeoJSON -> [lat, lng][]
+  // ---------------------
+  const loadPolygons = async () => {
+    setLoadingPolygons(true);
+    try {
+      const { data, error } = await supabase
+        .from("lot_polygons")
+        .select("id, coordinates, centroid_lat, centroid_lng")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Supabase load polygons error:", error);
+        toast({ title: "Error", description: "Failed to load polygons", variant: "destructive" });
+        setLoadingPolygons(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setPolygons([]);
+        setLoadingPolygons(false);
+        return;
+      }
+
+      const mapped: MapPolygon[] = data.map((row: any) => {
+        // coordinates may be an object (JSONB) or a string
+        const raw = row.coordinates;
+        const geo = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+        // If stored as GeoJSON { type: 'Polygon', coordinates: [ [ [lng,lat], ... ] ] }
+        let coordsLatLng: [number, number][] = [];
+
+        if (geo && geo.type === "Polygon" && Array.isArray(geo.coordinates)) {
+          // geo.coordinates[0] is outer ring: [ [lng,lat], ... ]
+          const outer = geo.coordinates[0] || [];
+          coordsLatLng = outer.map((pair: any) => {
+            const lng = Number(pair[0]);
+            const lat = Number(pair[1]);
+            return [lat, lng] as [number, number];
+          });
+        } else if (Array.isArray(geo)) {
+          // legacy: stored as array of [lat, lng]
+          coordsLatLng = geo.map((pair: any) => [Number(pair[0]), Number(pair[1])] as [number, number]);
+        } else {
+          // fallback: try to parse any nested structure
+          console.warn("Unexpected polygon format for row", row);
+        }
+
+        return {
+          id: row.id,
+          name: `Lot ${row.id.slice(0, 6)}`,
+          coordinates: coordsLatLng,
+          type: "lot",
+          is_available: true,
+        };
+      });
+
+      setPolygons(mapped);
+    } catch (err) {
+      console.error("loadPolygons error:", err);
+      toast({ title: "Error", description: "Failed to load polygons", variant: "destructive" });
+    } finally {
+      setLoadingPolygons(false);
+    }
   };
 
   const handleSelectGrave = (grave: Grave) => {
@@ -108,11 +176,17 @@ const Index = () => {
   };
 
   const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    new Date(dateStr).toLocaleString(undefined, { year: "numeric", month: "long", day: "numeric" });
+
+  // Build the runtime mapConfig object passed to CemeteryMap
+  const runtimeMapConfig = {
+    cemeteryBoundary: MAP_CONFIG.cemeteryBoundary ?? null,
+    polygons: polygons,
+    graves: [], // you can load graves similarly and set here
+  };
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
-
       {/* Header */}
       <header className="bg-card shadow-soft border-b z-20 relative w-full">
         <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -162,7 +236,6 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6 relative z-10">
-
         {/* Search + Location */}
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SearchBar onSelectGrave={handleSelectGrave} />
@@ -193,7 +266,7 @@ const Index = () => {
             selectedGrave={selectedGrave}
             setSelectedGrave={setSelectedGrave}
             userLocation={userLocation}
-            onStartPointSelected={handleStartPointSelected}
+            mapConfig={runtimeMapConfig}
           />
         </div>
 
