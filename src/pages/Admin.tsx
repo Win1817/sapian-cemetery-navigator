@@ -81,6 +81,7 @@ interface Lot {
   centroid_lat: number;
   centroid_lng: number;
   created_at: string;
+  grave_name?: string;
 }
 
 type AdminView = "graves" | "users" | "lots" | "form";
@@ -212,7 +213,8 @@ const Admin = () => {
           is_available,
           created_at,
           block:blocks!inner (block_name),
-          polygon_id!inner (centroid_lat, centroid_lng)
+          polygon_id!inner (centroid_lat, centroid_lng),
+          grave_id!left (grave_name)
         `)
         .order("lot_number");
 
@@ -227,6 +229,7 @@ const Admin = () => {
         centroid_lat: lot.polygon_id?.centroid_lat || 0,
         centroid_lng: lot.polygon_id?.centroid_lng || 0,
         created_at: lot.created_at,
+        grave_name: lot.grave_id?.grave_name || undefined,
       }));
 
       console.log(`📋 LOTS DEBUG: Fetched ${mappedLots.length} lots:`, mappedLots.map(l => ({ 
@@ -726,7 +729,10 @@ const Admin = () => {
                       {lot.is_available ? "Available" : "Assigned"}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground pt-1">Block: {lot.block_name}</p>
+                  {lot.grave_name && (
+                    <p className="text-xs text-muted-foreground pt-1"><span className="font-semibold">Grave:</span> {lot.grave_name}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">Block: {lot.block_name}</p>
                   <p className="text-xs text-muted-foreground">
                     Location: {lot.centroid_lat.toFixed(4)}, {lot.centroid_lng.toFixed(4)}
                   </p>

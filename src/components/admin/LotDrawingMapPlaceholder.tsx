@@ -18,18 +18,16 @@ import "leaflet-draw"; // must come after Leaflet
 const PATH_PRIMARY_COLOR = "#a39f5a";
 const PATH_CENTER_COLOR = "#ffffff";
 
-const entranceLocation: [number, number] = [
-  11.49508602798545, 122.60979891264897,
+const walkingPathCoords: [number, number][] = [
+  [11.495096158301706, 122.60987221867981],
+  [11.494968327920532, 122.60987876789699],
+  [11.494979753688696, 122.60996397403119],
+  [11.494141414948984, 122.61009393851407],
+  [11.494028746061815, 122.60991432451885],
+  [11.49496748331353, 122.60987887470753],
 ];
 
-const walkingPathCoords: [number, number][] = [
-  [11.495127981363993, 122.60979924526652],
-  [11.494928651699666, 122.60981068705934],
-  [11.49493986399753, 122.60992383368006],
-  [11.494129749317906, 122.61007183039277],
-  [11.494021562546706, 122.60986976342849],
-  [11.4949293748858, 122.60981066360614],
-];
+const entranceLocation: [number, number] = walkingPathCoords[0];
 
 interface LotDrawingMapProps {
   onCancel: () => void;
