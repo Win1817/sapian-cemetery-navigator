@@ -337,28 +337,6 @@ export const LotDrawingMap = ({ onCancel, onSave, isSaving = false, editingLot =
         fillOpacity: 0.5,
       });
 
-      const popupContent = `
-        <div style="font-weight: bold; margin-bottom: 8px;">
-          Block ${poly.block_name} - Lot ${poly.lot_number}
-        </div>
-        <div style="color: ${poly.is_available ? "green" : "red"}; font-weight: bold; margin-bottom: 8px;">
-          Status: ${poly.is_available ? "Available" : "Occupied"}
-        </div>
-        <button id="edit-btn-${poly.id}" style="background: #10b981; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%;">✎ Edit</button>
-      `;
-      polygon.bindPopup(popupContent);
-      polygon.on('popupopen', () => {
-        setTimeout(() => {
-          const editBtn = document.getElementById(`edit-btn-${poly.id}`);
-          if (editBtn) {
-            editBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleEditPolygon(poly);
-            });
-          }
-        }, 50);
-      });
       polygon.addTo(polygonsLayerRef.current!);
 
       // Calculate centroid for label placement (guaranteed to be inside convex polygons)
