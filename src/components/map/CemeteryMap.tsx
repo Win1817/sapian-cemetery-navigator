@@ -54,11 +54,13 @@ const LOT_AVAILABLE_COLOR = "#cccccc";
 const LOT_OCCUPIED_COLOR = "#aaaaaa";
 
 const entranceLocation: [number, number] = [
-  11.49508602798545, 122.60979891264897,
+  11.495097893612211, 122.60989196798636,
 ];
 
 const walkingPathCoords: [number, number][] = [
-  [11.495127981363993, 122.60979924526652],
+  [11.495097893612211, 122.60989196798636],
+  [11.495089078128508, 122.60989270852218],
+  [11.495076879312123, 122.60980506288541],
   [11.494928651699666, 122.60981068705934],
   [11.49493986399753, 122.60992383368006],
   [11.494129749317906, 122.61007183039277],
@@ -148,12 +150,16 @@ const CemeteryMap = ({
   const routeLineRef = useRef<L.Polyline | null>(null);
   const userMarkerRef = useRef<L.CircleMarker | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null); // Ref for SpeechSynthesis
+  const navigationWatchIdRef = useRef<number | null>(null); // Track location watch ID
+  const navigationActiveRef = useRef<boolean>(false); // Track if navigation is active
+  const userInitiatedVoiceRef = useRef<boolean>(false); // Track if user manually started voice nav
+  const lastLocationUpdateRef = useRef<number>(0); // Throttle location updates
+  const lastDistanceRef = useRef<number>(0); // Track last distance to avoid unnecessary updates
 
   const satelliteLayerRef = useRef<L.TileLayer | null>(null);
   const cartoLayerRef = useRef<L.TileLayer | null>(null);
   const osmLayerRef = useRef<L.TileLayer | null>(null);
 
-  const { toast } = useToast();
   const [routeInfo, setRouteInfo] = useState<{
     distance: number;
     duration: number;
@@ -177,13 +183,13 @@ const CemeteryMap = ({
     if (synthRef.current && synthRef.current.speaking) {
       synthRef.current.cancel();
       setIsSpeaking(false);
-      toast({ title: "Voice Guide", description: "Voice navigation stopped.", duration: 2000 });
     }
+    navigationActiveRef.current = false;
+    userInitiatedVoiceRef.current = false;
   };
 
   const startVoiceNavigation = () => {
-    if (!synthRef.current || routeSteps.length === 0) {
-      toast({ title: "Voice Guide", description: "Speech not supported or no route available.", variant: "destructive" });
+    if (!synthRef.current || routeSteps.length === 0 || !selectedGrave) {
       return;
     }
 
@@ -191,7 +197,8 @@ const CemeteryMap = ({
     stopVoiceNavigation(); 
 
     setIsSpeaking(true);
-    const welcomeText = `Starting navigation to ${selectedGrave?.grave_name}. Total estimated time is ${(routeInfo?.duration || 0 / 60).toFixed(0)} minutes.`;
+    navigationActiveRef.current = true;
+    const welcomeText = `Starting navigation to ${selectedGrave.grave_name}. Total estimated time is ${Math.round(routeInfo?.duration || 0)} minutes.`;
     
     // Combine steps into a single array of utterances
     const utterances = [
@@ -203,16 +210,16 @@ const CemeteryMap = ({
         if (step.distance > 0) {
              stepText += `. Proceed for about ${step.distance.toFixed(0)} meters.`;
         } else if (index === routeSteps.length - 1) {
-             stepText = `You have arrived at ${selectedGrave?.grave_name}. The guide has ended.`;
+             stepText = `You have arrived at ${selectedGrave.grave_name}. The guide has ended.`;
         }
         utterances.push(new SpeechSynthesisUtterance(stepText));
     });
 
     // Speak the utterances in sequence
     const speakSequence = (index: number) => {
-        if (index >= utterances.length || !isSpeaking) {
+        if (index >= utterances.length) {
             setIsSpeaking(false);
-            toast({ title: "Voice Guide", description: "Navigation finished.", duration: 3000 });
+            navigationActiveRef.current = false;
             return;
         }
 
@@ -222,11 +229,12 @@ const CemeteryMap = ({
         };
         utterance.onerror = () => {
             setIsSpeaking(false);
+            navigationActiveRef.current = false;
         };
         
         // Find a natural sounding voice (optional)
         const voices = synthRef.current?.getVoices();
-        const enUsVoice = voices.find(v => v.lang.startsWith('en-US') && v.localService) || voices[0];
+        const enUsVoice = voices?.find(v => v.lang.startsWith('en-US') && v.localService) || voices?.[0];
         if (enUsVoice) {
             utterance.voice = enUsVoice;
         }
@@ -660,7 +668,7 @@ const CemeteryMap = ({
         routeLineRef.current = L.polyline(completeRoute, { color: ROUTE_COLOR, weight: 9, opacity: 0.98 }).addTo(routeLayerRef.current!);
         
         // Render dashed line from snap point to grave (dark grey, small dash)
-        const finalLegCoords = [snapPoint, [graveLatLng.lat, graveLatLng.lng]];
+        const finalLegCoords: Array<[number, number]> = [[snapPoint[0], snapPoint[1]], [graveLatLng.lat, graveLatLng.lng]];
         L.polyline(finalLegCoords, { 
           color: "#555555", 
           weight: 4, 
@@ -688,12 +696,10 @@ const CemeteryMap = ({
           }
         ]);
         
-        const fallback = [userLocation, entranceLocation, [graveLatLng.lat, graveLatLng.lng]];
+        const fallback: Array<[number, number]> = [[userLocation[0], userLocation[1]], [entranceLocation[0], entranceLocation[1]], [graveLatLng.lat, graveLatLng.lng]];
         routeLineRef.current = L.polyline(fallback, { color: ROUTE_COLOR, weight: 9 }).addTo(routeLayerRef.current!);
-        
-        toast({ title: "Offline or Service Error", description: "Direct path shown. Detailed steps unavailable.", variant: "destructive" });
       });
-  }, [selectedGrave, userLocation, mapConfig, toast]);
+  }, [selectedGrave, userLocation, mapConfig]);
 
 
     // Helper to close modal and stop speech
