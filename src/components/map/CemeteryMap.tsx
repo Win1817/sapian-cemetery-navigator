@@ -53,20 +53,16 @@ const BOUNDARY_COLOR = "#444444";
 const LOT_AVAILABLE_COLOR = "#cccccc";
 const LOT_OCCUPIED_COLOR = "#aaaaaa";
 
-const entranceLocation: [number, number] = [
-  11.495097893612211, 122.60989196798636,
+const walkingPathCoords: [number, number][] = [
+  [11.495096158301706, 122.60987221867981],
+  [11.494968327920532, 122.60987876789699],
+  [11.494979753688696, 122.60996397403119],
+  [11.494141414948984, 122.61009393851407],
+  [11.494028746061815, 122.60991432451885],
+  [11.49496748331353, 122.60987887470753],
 ];
 
-const walkingPathCoords: [number, number][] = [
-  [11.495097893612211, 122.60989196798636],
-  [11.495089078128508, 122.60989270852218],
-  [11.495076879312123, 122.60980506288541],
-  [11.494928651699666, 122.60981068705934],
-  [11.49493986399753, 122.60992383368006],
-  [11.494129749317906, 122.61007183039277],
-  [11.494021562546706, 122.60986976342849],
-  [11.4949293748858, 122.60981066360614],
-];
+const entranceLocation: [number, number] = walkingPathCoords[0];
 
 // --- UTILITIES ---
 const getClosestPointOnPath = (target: L.LatLng): L.LatLng => {
@@ -393,45 +389,8 @@ const CemeteryMap = ({
       polygon.on("click", () => grave && setSelectedGrave(grave));
       polygon.addTo(boundaryLayerRef.current!);
 
-      // Render pin icon for assigned lots (when grave_id exists)
-      if (isLot && p.grave_id) {
-        console.log(`🔍 PIN DEBUG: Rendering pin for lot ${p.name}, grave_id: ${p.grave_id}, grave found: ${!!grave}`);
-        const latSum = p.coordinates.reduce((sum, coord) => sum + coord[0], 0);
-        const lngSum = p.coordinates.reduce((sum, coord) => sum + coord[1], 0);
-        const centroidLat = latSum / p.coordinates.length;
-        const centroidLng = lngSum / p.coordinates.length;
-        console.log(`  Centroid: [${centroidLat}, ${centroidLng}]`);
-        const pinIcon = L.divIcon({
-          html: `<div style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; position: relative;">
-            <svg width="24" height="24" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M20 2C11.7 2 5 8.7 5 17C5 29 20 38 20 38S35 29 35 17C35 8.7 28.3 2 20 2Z" fill="#2563eb" stroke="white" stroke-width="2"/>
-              <circle cx="20" cy="17" r="6" fill="white"/>
-            </svg>
-          </div>`,
-          iconSize: [24, 24],
-          iconAnchor: [12, 24],
-          className: "grave-pin-marker",
-        });
-
-        const pinMarker = L.marker([centroidLat, centroidLng], {
-          icon: pinIcon,
-          zIndexOffset: 500,
-        });
-
-        const graveName = grave?.grave_name || "Unknown Grave";
-        pinMarker.bindPopup(
-          `<div style="font-weight:bold;color:#dc2626;">📍 ${graveName}</div>
-           <p style="margin:4px 0; font-size:12px;">Assigned to ${p.name}</p>`
-        );
-
-        if (grave) {
-          pinMarker.on("click", () => setSelectedGrave(grave));
-        }
-        pinMarker.addTo(boundaryLayerRef.current!);
-        console.log(`  ✅ Pin marker added to map`);
-      } else if (isLot) {
-        console.log(`⏭️  SKIPPED: Lot ${p.name} - isLot: ${isLot}, grave_id: ${p.grave_id}`);
-      }
+      // Note: Pin icons will only show when a specific grave is selected/searched
+      // They are rendered dynamically in the ROUTING effect, not here
 
       // Add labels for Block Name and Lot Number
       if (p.type === "lot" || p.type === "block") { 
@@ -520,6 +479,24 @@ const CemeteryMap = ({
     
     L.marker(graveLatLng, { icon: pulsing, zIndexOffset: 9999 }).addTo(overlayLayerRef.current!).bindPopup(`<div style="min-width:160px;"><div style="padding:8px;border-bottom:2px solid #2d5f3f;margin-bottom:6px;"><div style="font-weight:bold;font-size:12px;color:#2d5f3f;">${selectedGrave.grave_name}</div></div><div style="padding:6px;"><div style="font-size:11px;color:#666;"><span style="color:#999;font-weight:500;">Location:</span> ${polygon.name}</div></div></div>`).openPopup();
     mapRef.current.setView(graveLatLng, 19);
+
+    // Show pin icon for selected grave
+    const pinIcon = L.divIcon({
+      html: `<div style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; position: relative;">
+        <svg width="24" height="24" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 2C11.7 2 5 8.7 5 17C5 29 20 38 20 38S35 29 35 17C35 8.7 28.3 2 20 2Z" fill="#2563eb" stroke="white" stroke-width="2"/>
+          <circle cx="20" cy="17" r="6" fill="white"/>
+        </svg>
+      </div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 24],
+      className: "grave-pin-marker",
+    });
+
+    L.marker([centroidLat, centroidLng], {
+      icon: pinIcon,
+      zIndexOffset: 500,
+    }).addTo(overlayLayerRef.current!);
 
     // OSRM Routing (User -> Entrance)
     // For OSRM, we need [lng, lat] format
@@ -823,8 +800,15 @@ const CemeteryMap = ({
       {selectedGrave && userLocation && routeLineRef.current && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none w-full px-4">
           <div className="pointer-events-auto max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-2xl p-5 flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex-1 text-center sm-text-left">
+            <div className="bg-white rounded-2xl shadow-2xl p-5 flex items-center gap-4">
+              <button
+                onClick={() => setSelectedGrave(null)}
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1.5 rounded transition flex-shrink-0"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="flex-1 text-center sm:text-left">
                 <p className="text-xs text-gray-500 font-medium">
                   Navigation ready to
                 </p>
@@ -834,7 +818,7 @@ const CemeteryMap = ({
               </div>
               <button
                 onClick={() => setIsRouteCardVisible(true)}
-                className="bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-8 py-3 rounded-xl shadow-lg text-lg transition-all"
+                className="bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-8 py-3 rounded-xl shadow-lg text-lg transition-all whitespace-nowrap flex-shrink-0"
               >
                 View Route
               </button>
