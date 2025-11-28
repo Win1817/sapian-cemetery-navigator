@@ -591,22 +591,22 @@ const CemeteryMap = ({
             const modifier = maneuver.modifier;
             
             const iconMap: { [key: string]: string } = {
-              "turn-left": "↙️",
-              "turn-right": "↗️",
+              "turn-left": "↙",
+              "turn-right": "↗",
               "turn-straight": "↑",
-              "turn-sharp-left": "⬅️",
-              "turn-sharp-right": "➡️",
-              "turn-slight-left": "↖️",
-              "turn-slight-right": "↗️",
+              "turn-sharp-left": "⬅",
+              "turn-sharp-right": "➡",
+              "turn-slight-left": "↖",
+              "turn-slight-right": "↗",
               "continue": "→",
-              "enter-roundabout": "🔄",
-              "exit-roundabout": "🔄",
-              "fork-left": "↙️",
-              "fork-right": "↗️",
+              "enter-roundabout": "⟳",
+              "exit-roundabout": "⟳",
+              "fork-left": "⟲",
+              "fork-right": "⟳",
               "merge": "↓",
               "new-name": "→",
-              "depart": "▶️",
-              "arrive": "🏁"
+              "depart": "▶",
+              "arrive": "✓"
             };
             
             const key = type + (modifier ? `-${modifier}` : "");
@@ -629,8 +629,8 @@ const CemeteryMap = ({
             // Get direction icon
             const directionIcon = getDirectionIcon(maneuver);
             
-            // Create formatted instruction with icon and street name
-            const formattedInstruction = `${directionIcon} ${instruction} on ${streetName} (${distanceStr})`;
+            // Create formatted instruction with icon (instruction already contains the street name from OSRM)
+            const formattedInstruction = `${directionIcon} ${instruction} (${distanceStr})`;
             
             steps.push({
               instruction: formattedInstruction,
@@ -801,14 +801,53 @@ const CemeteryMap = ({
                     <div>
                       <h4 className="font-semibold text-sm text-[#2d5f3f] mb-3">Directions:</h4>
                       <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {routeSteps.map((step, index) => (
+                        {routeSteps.map((step, index) => {
+                          // Handle both single-char arrows and multi-byte emoji
+                          let iconChar = step.instruction.charAt(0);
+                          let restOfText = step.instruction.substring(2);
+                          let icon = iconChar;
+                          
+                          // Check for emoji/multi-byte characters (they take 2+ characters in JS string)
+                          const firstTwo = step.instruction.substring(0, 2);
+                          if (firstTwo === '📍' || firstTwo === '🎯' || firstTwo === '⚠️') {
+                            iconChar = firstTwo;
+                            restOfText = step.instruction.substring(3).trim(); // Skip emoji + space
+                            icon = firstTwo;
+                          }
+                          
+                          // Map icons to Tailwind styling
+                          const getIconStyle = () => {
+                            switch(iconChar) {
+                              case '📍': return 'bg-blue-600 text-white rounded text-xs';
+                              case '🎯': return 'bg-red-600 text-white rounded text-xs';
+                              case '⚠️': return 'bg-yellow-600 text-white rounded text-xs';
+                              case '↙': return 'bg-blue-500 text-white rounded transform rotate-45';
+                              case '↗': return 'bg-purple-500 text-white rounded transform -rotate-45';
+                              case '↑': return 'bg-green-500 text-white rounded';
+                              case '⬅': return 'bg-red-500 text-white rounded transform rotate-90';
+                              case '➡': return 'bg-orange-500 text-white rounded transform -rotate-90';
+                              case '↖': return 'bg-indigo-500 text-white rounded transform rotate-135';
+                              case '→': return 'bg-gray-600 text-white rounded';
+                              case '⟳': return 'bg-yellow-500 text-white rounded-full';
+                              case '⟲': return 'bg-yellow-600 text-white rounded-full transform -scale-x-100';
+                              case '↓': return 'bg-pink-500 text-white rounded transform rotate-180';
+                              case '▶': return 'bg-teal-500 text-white rounded';
+                              case '✓': return 'bg-green-600 text-white rounded';
+                              default: return 'bg-gray-500 text-white rounded';
+                            }
+                          };
+                          
+                          return (
                             <div key={index} className="flex gap-2 text-xs border-b pb-2 last:border-b-0">
-                                <span className="font-bold min-w-[1.5rem] text-lg">{step.instruction.charAt(0)}</span>
-                                <div className="flex-1">
-                                  <p className="font-medium leading-tight">{step.instruction.substring(2)}</p>
-                                </div>
+                              <div className={`flex items-center justify-center w-6 h-6 flex-shrink-0 text-sm font-bold ${getIconStyle()}`}>
+                                {icon}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium leading-tight">{restOfText}</p>
+                              </div>
                             </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
