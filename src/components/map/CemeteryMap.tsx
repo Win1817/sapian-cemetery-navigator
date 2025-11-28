@@ -898,27 +898,27 @@ const CemeteryMap = ({
 
       {/* --- Navigation Ready/View Route Button Card (Top Center) --- */}
       {selectedGrave && userLocation && routeLineRef.current && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none w-full px-4">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none w-full px-2 sm:px-4">
           <div className="pointer-events-auto max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-2xl p-5 flex items-center gap-4">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-3 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
               <button
                 onClick={() => setSelectedGrave(null)}
-                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1.5 rounded transition flex-shrink-0"
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1 sm:p-1.5 rounded transition flex-shrink-0 self-end sm:self-auto"
                 aria-label="Close"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
-              <div className="flex-1 text-center sm:text-left">
+              <div className="flex-1 text-left">
                 <p className="text-xs text-gray-500 font-medium">
                   Navigation ready to
                 </p>
-                <p className="font-bold text-lg truncate">
+                <p className="font-bold text-base sm:text-lg truncate">
                   {selectedGrave.grave_name}
                 </p>
               </div>
               <button
                 onClick={() => setIsRouteCardVisible(true)}
-                className="bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-8 py-3 rounded-xl shadow-lg text-lg transition-all whitespace-nowrap flex-shrink-0"
+                className="w-full sm:w-auto bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-4 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-lg transition-all"
               >
                 View Route
               </button>
