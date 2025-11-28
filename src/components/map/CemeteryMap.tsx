@@ -132,31 +132,53 @@ const getClosestPointOnPath_LineString = (target: L.LatLng): { point: L.LatLng; 
 
 // TWO-STAGE ROUTING ALGORITHM
 // Stage 1: Find nearest point on path for direct access
-// Stage 2: Route directly to that point (straight line, no path following)
+// Stage 2: Follow the walking path to reach that point
 const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number], entranceLoc: [number, number]) => {
   // STAGE 1: Find the single nearest point on the entire path
-  const { point: nearestPathPoint } = getClosestPointOnPath_LineString(graveLatLng);
+  const { point: nearestPathPoint, segmentIndex } = getClosestPointOnPath_LineString(graveLatLng);
   const nearestPoint: [number, number] = [nearestPathPoint.lat, nearestPathPoint.lng];
   
-  // Calculate straight-line distance from entrance to nearest point
   const entranceLatLng = L.latLng(entranceLoc[0], entranceLoc[1]);
   const nearestPathLatLng = L.latLng(nearestPoint[0], nearestPoint[1]);
-  const directDistance = entranceLatLng.distanceTo(nearestPathLatLng);
   
-  console.log(`📍 STAGE 1 - Nearest path point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}], direct distance from entrance: ${directDistance.toFixed(1)}m`);
+  // STAGE 2: Follow the walking path from entrance to nearest point
+  // Determine the direction: from entrance through path to nearest point
+  const entranceIndex = 0; // Entrance is always the first point
   
-  // STAGE 2: Direct route - just the straight line from entrance to nearest point
-  const directPath: [number, number][] = [
-    [entranceLoc[0], entranceLoc[1]], // Start at entrance
-    nearestPoint                        // Go directly to nearest path point
-  ];
+  let pathToFollow: [number, number][] = [];
   
-  console.log(`📍 STAGE 2 - Direct route (2 waypoints): entrance → nearest point`);
+  if (segmentIndex >= entranceIndex) {
+    // Grave is ahead on the path or at the same position
+    // Follow path from entrance (index 0) through to the segment containing nearest point
+    for (let i = entranceIndex; i <= segmentIndex; i++) {
+      pathToFollow.push(walkingPathCoords[i]);
+    }
+    // Add the nearest point on the segment
+    pathToFollow.push(nearestPoint);
+  } else {
+    // This shouldn't happen as entrance is always at index 0
+    // Fallback to direct line
+    pathToFollow = [
+      [entranceLoc[0], entranceLoc[1]],
+      nearestPoint
+    ];
+  }
+  
+  // Calculate total distance along the path
+  let pathDistance = 0;
+  for (let i = 1; i < pathToFollow.length; i++) {
+    const from = L.latLng(pathToFollow[i - 1][0], pathToFollow[i - 1][1]);
+    const to = L.latLng(pathToFollow[i][0], pathToFollow[i][1]);
+    pathDistance += from.distanceTo(to);
+  }
+  
+  console.log(`📍 STAGE 1 - Nearest path point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}] at segment ${segmentIndex}`);
+  console.log(`📍 STAGE 2 - Following path with ${pathToFollow.length} waypoints, total distance: ${pathDistance.toFixed(1)}m`);
   
   return {
     nearestPathPoint: nearestPathLatLng,
-    internalPath: directPath,
-    directDistance
+    internalPath: pathToFollow,
+    directDistance: pathDistance
   };
 };
 
