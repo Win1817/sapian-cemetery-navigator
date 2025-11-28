@@ -896,9 +896,9 @@ const CemeteryMap = ({
           </div>
       )}
 
-      {/* --- Navigation Ready/View Route Button Card (Bottom Center) --- */}
+      {/* --- Navigation Ready/View Route Button Card (Top Center) --- */}
       {selectedGrave && userLocation && routeLineRef.current && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none w-full px-4">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none w-full px-4">
           <div className="pointer-events-auto max-w-md mx-auto">
             <div className="bg-white rounded-2xl shadow-2xl p-5 flex items-center gap-4">
               <button
