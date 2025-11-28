@@ -55,11 +55,11 @@ const LOT_OCCUPIED_COLOR = "#aaaaaa";
 
 const walkingPathCoords: [number, number][] = [
   [11.495096158301706, 122.60987221867981],
-  [11.494968327920532, 122.60987876789699],
-  [11.494979753688696, 122.60996397403119],
-  [11.494141414948984, 122.61009393851407],
+  [11.494974808049491, 122.60987810662022],
+  [11.49499108737686, 122.60998547346168],
+  [11.494157882612143, 122.61018592667318],
   [11.494028746061815, 122.60991432451885],
-  [11.49496748331353, 122.60987887470753],
+  [11.494974656904034, 122.60987829227338],
 ];
 
 const entranceLocation: [number, number] = walkingPathCoords[0];
@@ -127,6 +127,36 @@ const getClosestPointOnPath_LineString = (target: L.LatLng): { point: L.LatLng; 
   return {
     point: L.latLng(closestPoint[0], closestPoint[1]),
     segmentIndex: closestSegmentIndex
+  };
+};
+
+// TWO-STAGE ROUTING ALGORITHM
+// Stage 1: Find nearest point on path for direct access
+// Stage 2: Route directly to that point (straight line, no path following)
+const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number], entranceLoc: [number, number]) => {
+  // STAGE 1: Find the single nearest point on the entire path
+  const { point: nearestPathPoint } = getClosestPointOnPath_LineString(graveLatLng);
+  const nearestPoint: [number, number] = [nearestPathPoint.lat, nearestPathPoint.lng];
+  
+  // Calculate straight-line distance from entrance to nearest point
+  const entranceLatLng = L.latLng(entranceLoc[0], entranceLoc[1]);
+  const nearestPathLatLng = L.latLng(nearestPoint[0], nearestPoint[1]);
+  const directDistance = entranceLatLng.distanceTo(nearestPathLatLng);
+  
+  console.log(`📍 STAGE 1 - Nearest path point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}], direct distance from entrance: ${directDistance.toFixed(1)}m`);
+  
+  // STAGE 2: Direct route - just the straight line from entrance to nearest point
+  const directPath: [number, number][] = [
+    [entranceLoc[0], entranceLoc[1]], // Start at entrance
+    nearestPoint                        // Go directly to nearest path point
+  ];
+  
+  console.log(`📍 STAGE 2 - Direct route (2 waypoints): entrance → nearest point`);
+  
+  return {
+    nearestPathPoint: nearestPathLatLng,
+    internalPath: directPath,
+    directDistance
   };
 };
 
@@ -458,11 +488,13 @@ const CemeteryMap = ({
 
     const graveLatLng = L.latLng(centroidLat, centroidLng);
     
-    // Snap to the NEAREST POINT ON THE LINESTRING (not just nearest coordinate)
-    const { point: snapPointLatLng, segmentIndex } = getClosestPointOnPath_LineString(graveLatLng);
-    const snapPoint: [number, number] = [snapPointLatLng.lat, snapPointLatLng.lng];
+    // TWO-STAGE ROUTING: Find nearest path point and route to it
+    const routeOptimization = calculateOptimizedRoute(graveLatLng, userLocation, entranceLocation);
+    const nearestPathPoint = routeOptimization.nearestPathPoint;
+    const internalPath = routeOptimization.internalPath;
+    const snapPoint: [number, number] = [nearestPathPoint.lat, nearestPathPoint.lng];
     
-    console.log(`🔧 SNAP DEBUG: Grave at [${centroidLat.toFixed(5)}, ${centroidLng.toFixed(5)}] snapped to [${snapPoint[0].toFixed(5)}, ${snapPoint[1].toFixed(5)}] on segment ${segmentIndex}`);
+    console.log(`🔧 OPTIMIZED ROUTE: Grave at [${centroidLat.toFixed(5)}, ${centroidLng.toFixed(5)}] → nearest path point [${snapPoint[0].toFixed(5)}, ${snapPoint[1].toFixed(5)}]`);
 
     // Grave Highlight Marker
     const pulsing = L.divIcon({
@@ -511,19 +543,8 @@ const CemeteryMap = ({
         const route = data.routes?.[0];
         let externalRouteCoords: [number, number][] = [];
         
-        // Internal Path Routing (Entrance -> Snap Point on path)
-        // Build path up to and including the segment containing the snap point
-        const internalPath: [number, number][] = [];
-        
-        // Add all waypoints up to the segment containing the snap point
-        for (let i = 0; i <= segmentIndex && i < walkingPathCoords.length; i++) {
-          internalPath.push(walkingPathCoords[i]);
-        }
-        
-        // Add the snap point itself (if it's not already a waypoint)
-        if (internalPath[internalPath.length - 1][0] !== snapPoint[0] || internalPath[internalPath.length - 1][1] !== snapPoint[1]) {
-          internalPath.push(snapPoint);
-        }
+        // Note: internalPath is already calculated from the two-stage optimization above
+        // It contains the optimal path from entrance to the nearest path point
         
         if (route) {
           externalRouteCoords = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]]);
@@ -533,7 +554,7 @@ const CemeteryMap = ({
           let totalDistance = route.distance; // OSRM external route distance (already in meters)
           let totalDuration = route.duration; // OSRM external route duration (already in seconds)
           
-          // Add internal path distance (from entrance to snap point)
+          // Add internal path distance (from entrance to nearest path point)
           // Only add from index 1 onwards to avoid double-counting entrance point
           for (let i = 1; i < internalPath.length; i++) {
             const from = L.latLng(internalPath[i - 1][0], internalPath[i - 1][1]);

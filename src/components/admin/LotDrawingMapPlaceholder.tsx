@@ -20,11 +20,11 @@ const PATH_CENTER_COLOR = "#ffffff";
 
 const walkingPathCoords: [number, number][] = [
   [11.495096158301706, 122.60987221867981],
-  [11.494968327920532, 122.60987876789699],
-  [11.494979753688696, 122.60996397403119],
-  [11.494141414948984, 122.61009393851407],
+  [11.494974808049491, 122.60987810662022],
+  [11.49499108737686, 122.60998547346168],
+  [11.494157882612143, 122.61018592667318],
   [11.494028746061815, 122.60991432451885],
-  [11.49496748331353, 122.60987887470753],
+  [11.494974656904034, 122.60987829227338],
 ];
 
 const entranceLocation: [number, number] = walkingPathCoords[0];
@@ -120,8 +120,10 @@ export const LotDrawingMap = ({ onCancel, onSave, isSaving = false, editingLot =
   useEffect(() => {
     if (!editingLot || !isMapReady || !mapRef.current) return;
 
-    // Find the polygon for this lot from existing polygons and load it
-    const lotPolygon = existingPolygons.find(p => p.lot_number === editingLot.lot_number);
+    // Find the polygon for this lot by matching BOTH block_name and lot_number
+    const lotPolygon = existingPolygons.find(p => 
+      p.lot_number === editingLot.lot_number && p.block_name === editingLot.block_name
+    );
     if (lotPolygon && drawnItemsRef.current) {
       // Clear any existing drawn items
       drawnItemsRef.current.clearLayers();

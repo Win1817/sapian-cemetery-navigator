@@ -101,6 +101,9 @@ const Admin = () => {
   const [assigningLotId, setAssigningLotId] = useState<string | null>(null);
   const [gravesWithoutLots, setGravesWithoutLots] = useState<Grave[]>([]);
   const [loadingGravesForAssign, setLoadingGravesForAssign] = useState(false);
+  const [searchAssignGrave, setSearchAssignGrave] = useState("");
+  const [lotNumberFilter, setLotNumberFilter] = useState("");
+  const [blockNameFilter, setBlockNameFilter] = useState("__all__");
 
   // Auth & View State
   const [isAdmin, setIsAdmin] = useState(false);
@@ -577,6 +580,22 @@ const Admin = () => {
     g.grave_name.toLowerCase().includes(searchExport.toLowerCase())
   );
 
+  const filteredGravesForAssign = gravesWithoutLots.filter(g =>
+    g.grave_name.toLowerCase().includes(searchAssignGrave.toLowerCase())
+  );
+
+  const calculateAge = (dob: string, dod: string): number | null => {
+    if (!dob || !dod) return null;
+    const birthDate = new Date(dob);
+    const deathDate = new Date(dod);
+    let age = deathDate.getFullYear() - birthDate.getFullYear();
+    const monthDiff = deathDate.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && deathDate.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
   // --- VIEWS ---
   const GraveView = () => (
     <>
@@ -642,9 +661,18 @@ const Admin = () => {
   );
 
   const LotManagementView = () => {
-    const filtered = lots.filter(lot =>
-      lotFilter === "available" ? lot.is_available : lotFilter === "assigned" ? !lot.is_available : true
-    );
+    const filtered = lots.filter(lot => {
+      // Filter by availability status
+      const statusMatch = lotFilter === "available" ? lot.is_available : lotFilter === "assigned" ? !lot.is_available : true;
+      // Filter by lot number
+      const lotMatch = !lotNumberFilter || lot.lot_number.toLowerCase().includes(lotNumberFilter.toLowerCase());
+      // Filter by block name
+      const blockMatch = !blockNameFilter || blockNameFilter === "__all__" || lot.block_name.toLowerCase().includes(blockNameFilter.toLowerCase());
+      return statusMatch && lotMatch && blockMatch;
+    });
+
+    // Get unique blocks for block filter
+    const uniqueBlocks = Array.from(new Set(lots.map(l => l.block_name))).sort();
 
     return (
       <Card className="shadow-medium">
@@ -653,21 +681,40 @@ const Admin = () => {
             <CardTitle>Lot Management</CardTitle>
             <CardDescription>View, filter, and add cemetery lots</CardDescription>
           </div>
-          <div className="flex gap-2">
-            <Select value={lotFilter} onValueChange={(v) => setLotFilter(v as any)}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Lots ({lots.length})</SelectItem>
-                <SelectItem value="available">Available ({lots.filter(l => l.is_available).length})</SelectItem>
-                <SelectItem value="assigned">Assigned ({lots.filter(l => !l.is_available).length})</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={handleAddLot} size="sm">
-              <Square className="w-4 h-4 mr-2" /> Add Lot
-            </Button>
-          </div>
+          <Button onClick={handleAddLot} size="sm">
+            <Square className="w-4 h-4 mr-2" /> Add Lot
+          </Button>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-1 block">Status</label>
+              <Select value={lotFilter} onValueChange={(v) => setLotFilter(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Lots ({lots.length})</SelectItem>
+                  <SelectItem value="available">Available ({lots.filter(l => l.is_available).length})</SelectItem>
+                  <SelectItem value="assigned">Assigned ({lots.filter(l => !l.is_available).length})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-muted-foreground mb-1 block">Block</label>
+              <Select value={blockNameFilter} onValueChange={setBlockNameFilter}>
+                <SelectTrigger><SelectValue placeholder="All Blocks" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Blocks</SelectItem>
+                  {uniqueBlocks.map(block => (
+                    <SelectItem key={block} value={block}>{block}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-1">
+              <label className="text-sm font-medium text-muted-foreground mb-1 block">Lot Number</label>
+              <Input placeholder="Search lot number..." value={lotNumberFilter} onChange={(e) => setLotNumberFilter(e.target.value)} />
+            </div>
+          </div>
           {loadingLots ? (
             <p className="text-center py-8 text-muted-foreground">
               <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Loading lots...
@@ -861,6 +908,10 @@ const Admin = () => {
               <h3 className="text-xl font-bold">Assign Lot to Grave</h3>
               <p className="text-sm text-muted-foreground mt-1">Select a grave without an assigned lot</p>
             </div>
+            <div className="border-b p-4 flex items-center gap-2">
+              <Search className="w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Search by grave name..." value={searchAssignGrave} onChange={(e) => setSearchAssignGrave(e.target.value)} />
+            </div>
             <div className="flex-1 overflow-y-auto p-6">
               {loadingGravesForAssign ? (
                 <p className="text-center py-8 text-muted-foreground">
@@ -868,19 +919,32 @@ const Admin = () => {
                 </p>
               ) : gravesWithoutLots.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground">No graves available for assignment</p>
+              ) : filteredGravesForAssign.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">No graves match your search</p>
               ) : (
                 <div className="space-y-3">
-                  {gravesWithoutLots.map((grave) => (
+                  {filteredGravesForAssign.map((grave) => (
                     <Card key={grave.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer border border-gray-200">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <h4 className="font-semibold">{grave.grave_name}</h4>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {grave.date_of_death ? `d. ${new Date(grave.date_of_death).toLocaleDateString()}` : "No DOD"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Lat: {grave.latitude?.toFixed(4)}, Lng: {grave.longitude?.toFixed(4)}
-                          </p>
+                          <div className="space-y-1 mt-2">
+                            {grave.date_of_birth && (
+                              <p className="text-xs text-muted-foreground">
+                                <span className="font-semibold">Born:</span> {new Date(grave.date_of_birth).toLocaleDateString()}
+                              </p>
+                            )}
+                            {grave.date_of_death && (
+                              <p className="text-xs text-muted-foreground">
+                                <span className="font-semibold">Died:</span> {new Date(grave.date_of_death).toLocaleDateString()}
+                              </p>
+                            )}
+                            {grave.date_of_birth && grave.date_of_death && (
+                              <p className="text-xs text-muted-foreground">
+                                <span className="font-semibold">Age:</span> {calculateAge(grave.date_of_birth, grave.date_of_death)} years
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <Button
                           size="sm"
@@ -896,7 +960,10 @@ const Admin = () => {
               )}
             </div>
             <div className="border-t p-4 flex justify-end">
-              <Button variant="outline" onClick={() => setAssigningLotId(null)}>
+              <Button variant="outline" onClick={() => {
+                setAssigningLotId(null);
+                setSearchAssignGrave("");
+              }}>
                 Close
               </Button>
             </div>
