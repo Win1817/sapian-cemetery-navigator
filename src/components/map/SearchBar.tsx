@@ -1,5 +1,5 @@
 // src/components/map/SearchBar.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ const SearchBar = ({ onSelectGrave }: SearchBarProps) => {
   const [graves, setGraves] = useState<Grave[]>([]);
   const [filteredGraves, setFilteredGraves] = useState<Grave[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Fetch graves on mount
   useEffect(() => {
@@ -44,8 +45,9 @@ const SearchBar = ({ onSelectGrave }: SearchBarProps) => {
 
   const handleSelect = (grave: Grave) => {
     onSelectGrave(grave);
-    setSearchTerm(grave.grave_name);
+    setSearchTerm("");
     setShowResults(false);
+    inputRef.current?.blur();
   };
 
   return (
@@ -56,6 +58,7 @@ const SearchBar = ({ onSelectGrave }: SearchBarProps) => {
         </div>
 
         <Input
+          ref={inputRef}
           type="text"
           placeholder="Search for a name..."
           value={searchTerm}
