@@ -429,16 +429,25 @@ const CemeteryMap = ({
         const centroidLat = latSum / p.coordinates.length;
         const centroidLng = lngSum / p.coordinates.length;
 
-        // Extract initials from name (e.g., "Block A - Lot 1" -> "BA-L1")
-        const labelInitials = p.name
-          .split(' - ')
-          .map((part: string) => part.split(' ').map(w => w[0]).join(''))
-          .join('-');
+        // Extract block and lot from name (e.g., "Block A - Lot 1" -> "BA-L1" or "Block 7 - Lot 15" -> "B7-L15")
+        const parts = p.name.split(' - ');
+        let labelText = '';
+        
+        parts.forEach((part: string, idx: number) => {
+          const tokens = part.trim().split(' ');
+          // Extract first letter of first word + full number if exists
+          let label = tokens[0].charAt(0); // First letter of word (B, L, etc)
+          if (tokens[1]) {
+            label += tokens[1]; // Add the number part (7, 15, etc)
+          }
+          labelText += label;
+          if (idx < parts.length - 1) labelText += '-'; // Add separator between block and lot
+        });
 
         L.marker([centroidLat, centroidLng], {
           icon: L.divIcon({
             className: 'lot-block-label',
-            html: `<div style="font-size: 10px; font-weight: bold; color: #333; text-shadow: 0 0 2px white;">${labelInitials}</div>`,
+            html: `<div style="font-size: 10px; font-weight: bold; color: #333; text-shadow: 0 0 2px white;">${labelText}</div>`,
             iconSize: [60, 20],
             iconAnchor: [30, 10],
           }),
@@ -503,11 +512,20 @@ const CemeteryMap = ({
       iconSize: [36, 36],
       iconAnchor: [18, 18],
     });
-    // Extract initials from polygon name (e.g., "Block A - Lot 1" -> "BA-L1")
-    const nameInitials = polygon.name
-      .split(' - ')
-      .map((part: string) => part.split(' ').map(w => w[0]).join(''))
-      .join('-');
+    // Extract initials from polygon name (e.g., "Block A - Lot 1" -> "BA-L1" or "Block 7 - Lot 15" -> "B7-L15")
+    const namePartParts = polygon.name.split(' - ');
+    let nameLabel = '';
+    
+    namePartParts.forEach((part: string, idx: number) => {
+      const tokens = part.trim().split(' ');
+      // Extract first letter of first word + full number if exists
+      let label = tokens[0].charAt(0); // First letter of word (B, L, etc)
+      if (tokens[1]) {
+        label += tokens[1]; // Add the number part (7, 15, etc)
+      }
+      nameLabel += label;
+      if (idx < namePartParts.length - 1) nameLabel += '-'; // Add separator between block and lot
+    });
     
     L.marker(graveLatLng, { icon: pulsing, zIndexOffset: 9999 }).addTo(overlayLayerRef.current!).bindPopup(`<div style="min-width:160px;"><div style="padding:8px;border-bottom:2px solid #2d5f3f;margin-bottom:6px;"><div style="font-weight:bold;font-size:12px;color:#2d5f3f;">${selectedGrave.grave_name}</div></div><div style="padding:6px;"><div style="font-size:11px;color:#666;"><span style="color:#999;font-weight:500;">Location:</span> ${polygon.name}</div></div></div>`).openPopup();
     mapRef.current.setView(graveLatLng, 19);
