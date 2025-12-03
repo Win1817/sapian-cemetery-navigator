@@ -52,6 +52,11 @@ const GRAVE_HIGHLIGHT_COLOR = "#f4d03f";
 const BOUNDARY_COLOR = "#444444"; 
 const LOT_AVAILABLE_COLOR = "#cccccc";
 const LOT_OCCUPIED_COLOR = "#aaaaaa";
+// Enhanced colors for graves
+const LOT_AVAILABLE_FILL = "#90EE90"; // Light green for unassigned
+const LOT_AVAILABLE_STROKE = "#22C55E"; // Bright green for unassigned
+const LOT_OCCUPIED_FILL = "#FCA5A5"; // Light red for assigned
+const LOT_OCCUPIED_STROKE = "#DC2626"; // Bright red for assigned
 
 const walkingPathCoords: [number, number][] = [
   [11.495096158301706, 122.60987221867981],
@@ -416,26 +421,26 @@ const CemeteryMap = ({
     mapConfig.polygons.forEach((p) => {
       const isLot = p.type === "lot";
       const polygon = L.polygon(p.coordinates, {
-        color: isLot ? "#888888" : BOUNDARY_COLOR,
-        weight: isLot ? 1.5 : 1,
+        color: isLot 
+          ? (p.is_available ? LOT_AVAILABLE_STROKE : LOT_OCCUPIED_STROKE)
+          : BOUNDARY_COLOR,
+        weight: isLot ? 2.5 : 1.5,
         fill: p.type !== "boundary",
         fillColor: isLot
           ? p.is_available
-            ? LOT_AVAILABLE_COLOR
-            : LOT_OCCUPIED_COLOR
+            ? LOT_AVAILABLE_FILL
+            : LOT_OCCUPIED_FILL
           : undefined,
-        fillOpacity: isLot ? 0.6 : 0.1,
+        fillOpacity: isLot ? 0.7 : 0.1,
       });
       
       const grave = mapConfig.graves.find((g) => g.id === p.grave_id);
       
       let popupContent = `<div style="font-weight:bold;">${p.name}</div>`;
       if (isLot) {
-        popupContent += `<p style="color:${
-          p.is_available ? "green" : "red"
-        };">Status: ${
-          p.is_available ? "Available" : "Occupied"
-        }</p>${grave ? `<p>Grave: ${grave.grave_name}</p>` : ""}`;
+        const statusColor = p.is_available ? "#22C55E" : "#DC2626";
+        const statusText = p.is_available ? "Available" : "Assigned";
+        popupContent += `<p style="color:${statusColor}; font-weight:600;">Status: ${statusText}</p>${grave ? `<p style="margin-top:6px;"><strong>Resident:</strong> ${grave.grave_name}</p>` : ""}`;
       }
       polygon.bindPopup(popupContent);
       polygon.on("click", () => grave && setSelectedGrave(grave));

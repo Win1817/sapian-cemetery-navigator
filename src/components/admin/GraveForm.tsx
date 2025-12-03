@@ -41,10 +41,6 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
     date_of_birth: grave?.date_of_birth || "",
     date_of_death: grave?.date_of_death || "",
     additional_info: grave?.additional_info || "",
-    is_polygon: isLot,
-    polygon_coordinates: grave?.polygon_coordinates || null,
-    centroid_lat: grave?.centroid_lat || null,
-    centroid_lng: grave?.centroid_lng || null,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
@@ -127,40 +123,26 @@ export const GraveForm = ({ grave, onClose }: GraveFormProps) => {
         imageUrl = await handleImageUpload(imageFile);
       }
       
-      // Prepare submission data
-      const baseData = {
+      // Prepare submission data for graves table
+      const graveData = {
         grave_name: formData.grave_name,
         grave_image_url: imageUrl,
-        date_of_birth: formData.date_of_birth,
-        date_of_death: formData.date_of_death,
+        date_of_birth: formData.date_of_birth ? formData.date_of_birth : null,
+        date_of_death: formData.date_of_death ? formData.date_of_death : null,
         additional_info: formData.additional_info,
-        // Use hidden state coordinates or centroid
-        latitude: isLot ? formData.centroid_lat : parseFloat(formData.latitude as any),
-        longitude: isLot ? formData.centroid_lng : parseFloat(formData.longitude as any),
-      };
-
-      const submissionData = {
-        ...baseData,
-        ...(isLot ? {
-            is_polygon: true,
-            polygon_coordinates: formData.polygon_coordinates,
-            centroid_lat: formData.centroid_lat,
-            centroid_lng: formData.centroid_lng,
-        } : {
-            is_polygon: false,
-        }),
+        lot_block_id: selectedLotId || null,
       };
 
       if (grave?.id) { 
         const { error } = await supabase
           .from("graves")
-          .update(submissionData)
+          .update(graveData)
           .eq("id", grave.id);
 
         if (error) throw error;
         toast({ title: "Success", description: "Record updated successfully." });
       } else { 
-        const { error } = await supabase.from("graves").insert(submissionData);
+        const { error } = await supabase.from("graves").insert(graveData);
         if (error) throw error;
         toast({ title: "Success", description: "Record added successfully." });
       }
