@@ -146,27 +146,62 @@ const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number
   const entranceLatLng = L.latLng(entranceLoc[0], entranceLoc[1]);
   const nearestPathLatLng = L.latLng(nearestPoint[0], nearestPoint[1]);
   
-  // STAGE 2: Follow the walking path from entrance to nearest point
-  // Determine the direction: from entrance through path to nearest point
-  const entranceIndex = 0; // Entrance is always the first point
+  // STAGE 2: Intelligent path routing based on grave proximity
+  const entranceIndex = 0; // Entrance is always at walkingPathCoords[0]
   
   let pathToFollow: [number, number][] = [];
+  let routeDescription = '';
   
-  if (segmentIndex >= entranceIndex) {
-    // Grave is ahead on the path or at the same position
-    // Follow path from entrance (index 0) through to the segment containing nearest point
-    for (let i = entranceIndex; i <= segmentIndex; i++) {
-      pathToFollow.push(walkingPathCoords[i]);
+  // Determine routing based on grave proximity to path indices
+  if (segmentIndex === 5) {
+    // Grave is AT index 5
+    // Route: 0 → 1 → snap (stops at nearest point, doesn't go all the way to index 5)
+    routeDescription = `UPPER SECTION - INDEX 5`;
+    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
+    
+    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
+    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
+    pathToFollow.push(nearestPoint);         // Snap to exact grave location (don't go to index 5)
+    
+  } else if (segmentIndex === 4) {
+    // Grave is AT index 4
+    // Route: 0 → 1 → snap (stops at nearest point on segment 4)
+    routeDescription = `UPPER SECTION - INDEX 4`;
+    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
+    
+    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
+    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
+    pathToFollow.push(nearestPoint);         // Snap to exact grave location
+    
+  } else if (segmentIndex >= 2) {
+    // MIDDLE SECTION: Graves near indices 2–3–4
+    // Route: 0 → 1 → 2 → 3 → 4 → snap to nearest point
+    routeDescription = `MIDDLE SECTION (near indices 2–3–4)`;
+    console.log(`🚶 ${routeDescription}: Route 0→1→2→3→4→snap (grave at segment ${segmentIndex})`);
+    
+    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
+    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
+    pathToFollow.push(walkingPathCoords[2]); // Index 2: Path continues
+    
+    // Only include indices up to where we need to reach the grave
+    if (segmentIndex >= 3) {
+      pathToFollow.push(walkingPathCoords[3]); // Index 3: Path continues
     }
-    // Add the nearest point on the segment
-    pathToFollow.push(nearestPoint);
-  } else {
-    // This shouldn't happen as entrance is always at index 0
-    // Fallback to direct line
-    pathToFollow = [
-      [entranceLoc[0], entranceLoc[1]],
-      nearestPoint
-    ];
+    if (segmentIndex >= 4) {
+      pathToFollow.push(walkingPathCoords[4]); // Index 4: Path continues
+    }
+    
+    pathToFollow.push(nearestPoint); // Snap to exact grave location
+    
+  } else if (segmentIndex <= 1) {
+    // LOWER SECTION: Graves near indices 0–1
+    // Route: 0 → 1 → snap to nearest point
+    routeDescription = `LOWER SECTION (near entrance indices 0–1)`;
+    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
+    
+    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
+    pathToFollow.push(walkingPathCoords[1]); // Index 1: First waypoint
+    pathToFollow.push(nearestPoint);         // Snap to exact grave location
   }
   
   // Calculate total distance along the path
@@ -177,13 +212,16 @@ const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number
     pathDistance += from.distanceTo(to);
   }
   
-  console.log(`📍 STAGE 1 - Nearest path point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}] at segment ${segmentIndex}`);
-  console.log(`📍 STAGE 2 - Following path with ${pathToFollow.length} waypoints, total distance: ${pathDistance.toFixed(1)}m`);
+  console.log(`📍 Nearest point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}] at segment ${segmentIndex}`);
+  console.log(`📍 Path with ${pathToFollow.length} waypoints, distance: ${pathDistance.toFixed(1)}m`);
+  console.log(`📍 Section: ${routeDescription}`);
   
   return {
     nearestPathPoint: nearestPathLatLng,
     internalPath: pathToFollow,
-    directDistance: pathDistance
+    directDistance: pathDistance,
+    segmentIndex: segmentIndex,
+    section: routeDescription
   };
 };
 
@@ -575,139 +613,98 @@ const CemeteryMap = ({
       zIndexOffset: 500,
     }).addTo(overlayLayerRef.current!);
 
-    // OSRM Routing (User -> Entrance)
-    // For OSRM, we need [lng, lat] format
-    let userLng = userLocation[1];
-    let userLat = userLocation[0];
+    // THREE-STAGE ROUTING:
+    // 1. OSM Route: User location → Cemetery entrance (external streets)
+    // 2. Internal Path: Cemetery entrance → Walking path to grave
+    // 3. Final Approach: Snap point → Grave center
+    
+    const userLng = userLocation[1];
+    const userLat = userLocation[0];
     const entranceLng = entranceLocation[1];
     const entranceLat = entranceLocation[0];
     
-    fetch(`https://router.project-osrm.org/route/v1/walking/${userLng},${userLat};${entranceLng},${entranceLat}?overview=full&geometries=geojson&steps=true`)
+    // Use OSRM (OpenStreetMap Routing Machine) for external routing
+    const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${userLng},${userLat};${entranceLng},${entranceLat}?overview=full&geometries=geojson`;
+    
+    fetch(osrmUrl)
       .then((r) => r.json())
       .then((data) => {
-        const route = data.routes?.[0];
         let externalRouteCoords: [number, number][] = [];
+        let externalDistance = 0;
+        let externalDuration = 0;
         
-        // Note: internalPath is already calculated from the two-stage optimization above
-        // It contains the optimal path from entrance to the nearest path point
-        
-        if (route) {
-          externalRouteCoords = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]]);
+        // Extract route from OSRM response
+        if (data.routes && data.routes[0]) {
+          const route = data.routes[0];
+          const geometry = route.geometry;
           
-          // Calculate total distance and duration for hybrid route
-          // Note: OSRM returns distance in meters for external route (user -> entrance)
-          let totalDistance = route.distance; // OSRM external route distance (already in meters)
-          let totalDuration = route.duration; // OSRM external route duration (already in seconds)
-          
-          // Add internal path distance (from entrance to nearest path point)
-          // Only add from index 1 onwards to avoid double-counting entrance point
-          for (let i = 1; i < internalPath.length; i++) {
-            const from = L.latLng(internalPath[i - 1][0], internalPath[i - 1][1]);
-            const to = L.latLng(internalPath[i][0], internalPath[i][1]);
-            const segmentDistance = from.distanceTo(to); // distanceTo returns meters
-            totalDistance += segmentDistance;
-            // Use 1.4 m/s for internal path duration calculation
-            totalDuration += segmentDistance / 1.4;
+          if (geometry.coordinates) {
+            // Convert from [lng, lat] to [lat, lng]
+            externalRouteCoords = geometry.coordinates.map((coord: [number, number]) => [coord[1], coord[0]]);
           }
           
-          // Add final leg (snap point to grave)
-          const snapPointLatLng = L.latLng(snapPoint[0], snapPoint[1]);
-          const finalDistance = snapPointLatLng.distanceTo(graveLatLng); // in meters
-          totalDistance += finalDistance;
-          // Use 1.4 m/s for final leg duration calculation
-          totalDuration += finalDistance / 1.4;
-          
-          // Convert to km and minutes for display
-          setRouteInfo({ 
-            distance: totalDistance / 1000, // Convert to km for display
-            duration: totalDuration / 60   // Convert to minutes for display
-          });
-          
-          // Process route steps for detailed navigation - extract actual turn-by-turn directions
-          const steps: RouteStep[] = [];
-          
-          // Extract all steps from OSRM (not just those with maneuver instructions)
-          const allSteps = route.legs[0]?.steps || [];
-          
-          // Function to get direction icon based on turn type
-          const getDirectionIcon = (maneuver: any) => {
-            if (!maneuver) return "→";
-            const type = maneuver.type;
-            const modifier = maneuver.modifier;
-            
-            const iconMap: { [key: string]: string } = {
-              "turn-left": "↙",
-              "turn-right": "↗",
-              "turn-straight": "↑",
-              "turn-sharp-left": "⬅",
-              "turn-sharp-right": "➡",
-              "turn-slight-left": "↖",
-              "turn-slight-right": "↗",
-              "continue": "→",
-              "enter-roundabout": "⟳",
-              "exit-roundabout": "⟳",
-              "fork-left": "⟲",
-              "fork-right": "⟳",
-              "merge": "↓",
-              "new-name": "→",
-              "depart": "▶",
-              "arrive": "✓"
-            };
-            
-            const key = type + (modifier ? `-${modifier}` : "");
-            return iconMap[key] || iconMap[type] || "→";
-          };
-          
-          allSteps.forEach((s: any, idx: number) => {
-            // Get street name from the step data
-            const streetName = s.name || "Road";
-            const maneuver = s.maneuver;
-            const instruction = maneuver?.instruction || `Continue on ${streetName}`;
-            const distance = s.distance || 0; // in meters
-            const duration = s.duration || 0; // in seconds
-            
-            // Format distance in meters or km
-            const distanceStr = distance > 1000 
-              ? `${(distance / 1000).toFixed(1)} km`
-              : `${Math.round(distance)} m`;
-            
-            // Get direction icon
-            const directionIcon = getDirectionIcon(maneuver);
-            
-            // Create formatted instruction with icon (instruction already contains the street name from OSRM)
-            const formattedInstruction = `${directionIcon} ${instruction} (${distanceStr})`;
-            
-            steps.push({
-              instruction: formattedInstruction,
-              distance: distance,
-              duration: duration
-            });
-          });
-          
-          // Add cemetery entrance message
-          steps.push({ 
-            instruction: `📍 Arrived at cemetery entrance. Enter and follow the main path.`, 
-            distance: 0, 
-            duration: 0 
-          });
-          steps.push({ 
-            instruction: `🎯 Head towards lot ${polygon.name} where ${selectedGrave.grave_name} is located.`, 
-            distance: 0, 
-            duration: 0 
-          });
-          steps.push({ 
-            instruction: `✓ You have arrived at ${selectedGrave.grave_name}`, 
-            distance: 0, 
-            duration: 0 
-          });
-          
-          setRouteSteps(steps);
+          externalDistance = route.distance || 0; // meters
+          externalDuration = route.duration || 0; // seconds
         }
         
-        // Build complete route: External route + internal path to snap point
+        // Build complete route: External OSM route + Internal cemetery path
         const completeRoute = [...externalRouteCoords, ...internalPath];
         
-        // Render main route (solid line from user to snap point on internal path)
+        // Calculate distances for cemetery portion
+        const entranceToSnapDist = routeOptimization.directDistance;
+        const snapToGraveDist = L.latLng(snapPoint[0], snapPoint[1]).distanceTo(graveLatLng);
+        
+        // Total distances
+        const totalDistance = externalDistance + entranceToSnapDist + snapToGraveDist;
+        const totalDuration = externalDuration + (entranceToSnapDist / 1.4) + (snapToGraveDist / 1.4);
+        
+        // Set route info
+        setRouteInfo({ 
+          distance: totalDistance / 1000,
+          duration: totalDuration / 60
+        });
+        
+        // Create route steps
+        const steps: RouteStep[] = [];
+        
+        // Step 1: External OSM route instructions
+        steps.push({
+          instruction: `→ Walk to cemetery entrance (${Math.round(externalDistance)} m)`,
+          distance: externalDistance,
+          duration: externalDuration
+        });
+        
+        // Step 2: Enter cemetery
+        steps.push({ 
+          instruction: `📍 Entered cemetery. Follow the main walking path.`, 
+          distance: 0, 
+          duration: 0 
+        });
+        
+        // Step 3: Navigate to grave location via internal path
+        steps.push({ 
+          instruction: `🎯 Follow path towards lot ${polygon.name} (${Math.round(entranceToSnapDist)} m)`, 
+          distance: entranceToSnapDist,
+          duration: entranceToSnapDist / 1.4
+        });
+        
+        // Step 4: Final approach
+        steps.push({ 
+          instruction: `→ Head to grave location (${Math.round(snapToGraveDist)} m)`, 
+          distance: snapToGraveDist,
+          duration: snapToGraveDist / 1.4
+        });
+        
+        // Step 5: Arrival
+        steps.push({ 
+          instruction: `✓ You have arrived at ${selectedGrave.grave_name}`, 
+          distance: 0, 
+          duration: 0 
+        });
+        
+        setRouteSteps(steps);
+        
+        // Render complete route (solid line)
         routeLineRef.current = L.polyline(completeRoute, { color: ROUTE_COLOR, weight: 9, opacity: 0.98 }).addTo(routeLayerRef.current!);
         
         // Render dashed line from snap point to grave (dark grey, small dash)
@@ -719,28 +716,60 @@ const CemeteryMap = ({
           dashArray: "5, 8",
           lineCap: "butt"
         }).addTo(routeLayerRef.current!);
+        
+        console.log(`✅ Route calculated: ${(totalDistance/1000).toFixed(2)}km, ${Math.round(totalDuration/60)}min`);
       })
-      .catch(() => {
-        // Fallback for offline/OSRM error
-        const d = L.latLng(userLocation).distanceTo(graveLatLng);
-        const distanceKm = d / 1000;
-        const durationMin = d / 1.4 / 60;
-        setRouteInfo({ distance: distanceKm, duration: durationMin });
+      .catch((err) => {
+        console.warn("OSRM routing error, using direct line fallback:", err);
+        
+        // Fallback: Direct line from user to entrance
+        const directDist = L.latLng(userLocation).distanceTo(L.latLng(entranceLocation));
+        const entranceToSnapDist = routeOptimization.directDistance;
+        const snapToGraveDist = L.latLng(snapPoint[0], snapPoint[1]).distanceTo(graveLatLng);
+        
+        const totalDistance = directDist + entranceToSnapDist + snapToGraveDist;
+        const totalDuration = totalDistance / 1.4;
+        
+        setRouteInfo({ 
+          distance: totalDistance / 1000,
+          duration: totalDuration / 60
+        });
+        
         setRouteSteps([
           { 
-            instruction: `⚠️ Could not calculate optimal route. Follow the direct line shown.`, 
-            distance: d, 
-            duration: d / 1.4 
+            instruction: `⚠️ Using direct route. Head towards cemetery entrance.`, 
+            distance: directDist, 
+            duration: directDist / 1.4 
           },
           { 
-            instruction: `Head towards cemetery entrance at coordinates [${entranceLocation[0].toFixed(4)}, ${entranceLocation[1].toFixed(4)}]`, 
+            instruction: `📍 Follow the walking path inside cemetery.`, 
+            distance: entranceToSnapDist,
+            duration: entranceToSnapDist / 1.4
+          },
+          { 
+            instruction: `✓ You have arrived at ${selectedGrave.grave_name}`, 
             distance: 0, 
             duration: 0 
           }
         ]);
         
-        const fallback: Array<[number, number]> = [[userLocation[0], userLocation[1]], [entranceLocation[0], entranceLocation[1]], [graveLatLng.lat, graveLatLng.lng]];
-        routeLineRef.current = L.polyline(fallback, { color: ROUTE_COLOR, weight: 9 }).addTo(routeLayerRef.current!);
+        // Render fallback route
+        const fallbackRoute: Array<[number, number]> = [
+          [userLocation[0], userLocation[1]],
+          [entranceLocation[0], entranceLocation[1]],
+          ...internalPath
+        ];
+        routeLineRef.current = L.polyline(fallbackRoute, { color: ROUTE_COLOR, weight: 9, opacity: 0.98 }).addTo(routeLayerRef.current!);
+        
+        // Render dashed line from snap point to grave
+        const finalLegCoords: Array<[number, number]> = [[snapPoint[0], snapPoint[1]], [graveLatLng.lat, graveLatLng.lng]];
+        L.polyline(finalLegCoords, { 
+          color: "#555555", 
+          weight: 4, 
+          opacity: 0.8,
+          dashArray: "5, 8",
+          lineCap: "butt"
+        }).addTo(routeLayerRef.current!);
       });
   }, [selectedGrave, userLocation, mapConfig]);
 
