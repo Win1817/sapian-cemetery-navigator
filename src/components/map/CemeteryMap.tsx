@@ -58,16 +58,71 @@ const LOT_AVAILABLE_STROKE = "#22C55E"; // Bright green for unassigned
 const LOT_OCCUPIED_FILL = "#FCA5A5"; // Light red for assigned
 const LOT_OCCUPIED_STROKE = "#DC2626"; // Bright red for assigned
 
-const walkingPathCoords: [number, number][] = [
-  [11.495096158301706, 122.60987221867981],
-  [11.494974808049491, 122.60987810662022],
-  [11.49499108737686, 122.60998547346168],
-  [11.494157882612143, 122.61018592667318],
-  [11.494028746061815, 122.60991432451885],
-  [11.494974656904034, 122.60987829227338],
+// --- WALKING PATH DEFINITION ---
+// Walking path with labeled waypoints for navigation inside cemetery
+interface WalkingPathPoint {
+  coords: [number, number];
+  label: string;
+  description: string;
+  index: number;
+}
+
+const walkingPathPoints: WalkingPathPoint[] = [
+  {
+    coords: [11.495096158301706, 122.60987221867981],
+    label: "Main Entrance",
+    description: "Primary cemetery entrance point - starting location for all routes",
+    index: 0,
+  },
+  {
+    coords: [11.494974808049491, 122.60987810662022],
+    label: "Path Split / First Waypoint",
+    description: "Initial waypoint after entering cemetery - path branches towards sections",
+    index: 1,
+  },
+  {
+    coords: [11.49499108737686, 122.60998547346168],
+    label: "Upper Section Access",
+    description: "Access point to upper cemetery section (Blocks 2-4)",
+    index: 2,
+  },
+  {
+    coords: [11.494157882612143, 122.61018592667318],
+    label: "Far Upper Zone",
+    description: "Furthest point in upper section - serves graves near index 3-4",
+    index: 3,
+  },
+  {
+    coords: [11.494028746061815, 122.60991432451885],
+    label: "Upper Mid-Section Turn",
+    description: "Turn point in upper-middle section - routes to outer lots",
+    index: 4,
+  },
+  {
+    coords: [11.494974656904034, 122.60987829227338],
+    label: "Return to Entrance Loop",
+    description: "Loop point returning towards main entrance - serves lower section graves",
+    index: 5,
+  },
 ];
 
+// Extract coordinate array for Leaflet mapping
+const walkingPathCoords: [number, number][] = walkingPathPoints.map(p => p.coords);
+
+// Entrance location is the first waypoint
 const entranceLocation: [number, number] = walkingPathCoords[0];
+
+// Helper function to get waypoint label by index
+const getWaypointLabel = (index: number): string => {
+  const point = walkingPathPoints.find(p => p.index === index);
+  return point ? `${point.label} (Index ${index})` : `Waypoint ${index}`;
+};
+
+// Helper function to get waypoint description by index
+const getWaypointDescription = (index: number): string => {
+  const point = walkingPathPoints.find(p => p.index === index);
+  return point ? point.description : `Unnamed waypoint at index ${index}`;
+};
 
 // --- UTILITIES ---
 const getClosestPointOnPath = (target: L.LatLng): L.LatLng => {
@@ -137,7 +192,7 @@ const getClosestPointOnPath_LineString = (target: L.LatLng): { point: L.LatLng; 
 
 // TWO-STAGE ROUTING ALGORITHM
 // Stage 1: Find nearest point on path for direct access
-// Stage 2: Follow the walking path to reach that point
+// Stage 2: Follow the walking path to reach that point (choosing optimal direction)
 const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number], entranceLoc: [number, number]) => {
   // STAGE 1: Find the single nearest point on the entire path
   const { point: nearestPathPoint, segmentIndex } = getClosestPointOnPath_LineString(graveLatLng);
@@ -146,65 +201,96 @@ const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number
   const entranceLatLng = L.latLng(entranceLoc[0], entranceLoc[1]);
   const nearestPathLatLng = L.latLng(nearestPoint[0], nearestPoint[1]);
   
-  // STAGE 2: Intelligent path routing based on grave proximity
-  const entranceIndex = 0; // Entrance is always at walkingPathCoords[0]
+  // STAGE 1.5: Check if grave is very close to waypoint 4 and adjust segment if needed
+  // If detected segment is 3 but grave is actually closer to waypoint 4, treat as segment 4
+  let adjustedSegmentIndex = segmentIndex;
+  if (segmentIndex === 3) {
+    const distToWaypoint4 = graveLatLng.distanceTo(L.latLng(walkingPathCoords[4][0], walkingPathCoords[4][1]));
+    const distToWaypoint3 = graveLatLng.distanceTo(L.latLng(walkingPathCoords[3][0], walkingPathCoords[3][1]));
+    
+    // If closer to waypoint 4, treat as segment 4
+    if (distToWaypoint4 < distToWaypoint3) {
+      adjustedSegmentIndex = 4;
+      console.log(`📍 Adjusted segment index from 3 to 4 (grave closer to waypoint 4: ${distToWaypoint4.toFixed(1)}m vs ${distToWaypoint3.toFixed(1)}m)`);
+    }
+  }
   
   let pathToFollow: [number, number][] = [];
   let routeDescription = '';
+  let routeWaypoints: string[] = [getWaypointLabel(0)];
   
-  // Determine routing based on grave proximity to path indices
-  if (segmentIndex === 5) {
-    // Grave is AT index 5
-    // Route: 0 → 1 → snap (stops at nearest point, doesn't go all the way to index 5)
-    routeDescription = `UPPER SECTION - INDEX 5`;
-    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
+  // Always start from entrance
+  pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
+  
+  if (adjustedSegmentIndex <= 1) {
+    // LOWER SECTION: Graves near entrance (segments 0-1)
+    // Route: 0 → 1 → snap
+    routeDescription = `LOWER SECTION (near entrance)`;
+    pathToFollow.push(walkingPathCoords[1]);
+    routeWaypoints.push(getWaypointLabel(1));
+    pathToFollow.push(nearestPoint);
+    routeWaypoints.push("Snap to Grave");
     
-    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
-    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
-    pathToFollow.push(nearestPoint);         // Snap to exact grave location (don't go to index 5)
+  } else if (adjustedSegmentIndex <= 3) {
+    // MIDDLE SECTION: Graves near indices 2-3 (segments 2-3)
+    // Forward route: 0 → 1 → 2 → 3 → snap
+    routeDescription = `MIDDLE SECTION (forward route, segment ${adjustedSegmentIndex})`;
+    pathToFollow.push(walkingPathCoords[1]);
+    routeWaypoints.push(getWaypointLabel(1));
+    pathToFollow.push(walkingPathCoords[2]);
+    routeWaypoints.push(getWaypointLabel(2));
     
-  } else if (segmentIndex === 4) {
-    // Grave is AT index 4
-    // Route: 0 → 1 → snap (stops at nearest point on segment 4)
-    routeDescription = `UPPER SECTION - INDEX 4`;
-    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
-    
-    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
-    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
-    pathToFollow.push(nearestPoint);         // Snap to exact grave location
-    
-  } else if (segmentIndex >= 2) {
-    // MIDDLE SECTION: Graves near indices 2–3–4
-    // Route: 0 → 1 → 2 → 3 → 4 → snap to nearest point
-    routeDescription = `MIDDLE SECTION (near indices 2–3–4)`;
-    console.log(`🚶 ${routeDescription}: Route 0→1→2→3→4→snap (grave at segment ${segmentIndex})`);
-    
-    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
-    pathToFollow.push(walkingPathCoords[1]); // Index 1: Split point
-    pathToFollow.push(walkingPathCoords[2]); // Index 2: Path continues
-    
-    // Only include indices up to where we need to reach the grave
-    if (segmentIndex >= 3) {
-      pathToFollow.push(walkingPathCoords[3]); // Index 3: Path continues
-    }
-    if (segmentIndex >= 4) {
-      pathToFollow.push(walkingPathCoords[4]); // Index 4: Path continues
+    // Include waypoint 3 if grave is at segment 3
+    if (adjustedSegmentIndex === 3) {
+      pathToFollow.push(walkingPathCoords[3]);
+      routeWaypoints.push(getWaypointLabel(3));
     }
     
-    pathToFollow.push(nearestPoint); // Snap to exact grave location
+    pathToFollow.push(nearestPoint);
+    routeWaypoints.push("Snap to Grave");
     
-  } else if (segmentIndex <= 1) {
-    // LOWER SECTION: Graves near indices 0–1
-    // Route: 0 → 1 → snap to nearest point
-    routeDescription = `LOWER SECTION (near entrance indices 0–1)`;
-    console.log(`🚶 ${routeDescription}: Route 0→1→snap (grave at segment ${segmentIndex})`);
+  } else if (adjustedSegmentIndex === 4) {
+    // SEGMENT 4: Graves at the boundary between 4 and 5
+    // Check if grave is closer to waypoint 5 - if so, skip waypoint 4 and snap directly
+    const distToWaypoint5 = graveLatLng.distanceTo(L.latLng(walkingPathCoords[5][0], walkingPathCoords[5][1]));
+    const distToWaypoint4 = graveLatLng.distanceTo(L.latLng(walkingPathCoords[4][0], walkingPathCoords[4][1]));
     
-    pathToFollow.push(walkingPathCoords[0]); // Index 0: Entrance
-    pathToFollow.push(walkingPathCoords[1]); // Index 1: First waypoint
-    pathToFollow.push(nearestPoint);         // Snap to exact grave location
+    pathToFollow.push(walkingPathCoords[1]);
+    routeWaypoints.push(getWaypointLabel(1));
+    
+    pathToFollow.push(walkingPathCoords[5]);
+    routeWaypoints.push(getWaypointLabel(5));
+    
+    // Only include waypoint 4 if grave is closer to it than to waypoint 5
+    if (distToWaypoint4 < distToWaypoint5) {
+      routeDescription = `SEGMENT 4 (backward route - going through waypoint 4)`;
+      pathToFollow.push(walkingPathCoords[4]);
+      routeWaypoints.push(getWaypointLabel(4));
+      console.log(`📊 Segment 4: Using backward route (0 → 1 → 5 → 4 → snap) - closer to waypoint 4 (${distToWaypoint4.toFixed(1)}m vs ${distToWaypoint5.toFixed(1)}m)`);
+    } else {
+      routeDescription = `SEGMENT 4 (backward route - snap from waypoint 5)`;
+      console.log(`📊 Segment 4: Using backward route (0 → 1 → 5 → snap) - closer to waypoint 5 (${distToWaypoint5.toFixed(1)}m vs ${distToWaypoint4.toFixed(1)}m)`);
+    }
+    
+    pathToFollow.push(nearestPoint);
+    routeWaypoints.push("Snap to Grave");
+    
+  } else {
+    // UPPER SECTION: Graves at segment 5 or higher
+    // Use backward route: 0 → 1 → 5 → snap
+    routeDescription = `UPPER SECTION (backward/loop route, segment ${adjustedSegmentIndex})`;
+    
+    pathToFollow.push(walkingPathCoords[1]);
+    routeWaypoints.push(getWaypointLabel(1));
+    
+    pathToFollow.push(walkingPathCoords[5]);
+    routeWaypoints.push(getWaypointLabel(5));
+    
+    pathToFollow.push(nearestPoint);
+    routeWaypoints.push("Snap to Grave");
   }
   
-  // Calculate total distance along the path
+  // Calculate total distance along the chosen path
   let pathDistance = 0;
   for (let i = 1; i < pathToFollow.length; i++) {
     const from = L.latLng(pathToFollow[i - 1][0], pathToFollow[i - 1][1]);
@@ -212,16 +298,18 @@ const calculateOptimizedRoute = (graveLatLng: L.LatLng, userLoc: [number, number
     pathDistance += from.distanceTo(to);
   }
   
-  console.log(`📍 Nearest point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}] at segment ${segmentIndex}`);
-  console.log(`📍 Path with ${pathToFollow.length} waypoints, distance: ${pathDistance.toFixed(1)}m`);
+  console.log(`📍 Nearest point: [${nearestPoint[0].toFixed(5)}, ${nearestPoint[1].toFixed(5)}] at segment ${segmentIndex} (adjusted to ${adjustedSegmentIndex})`);
+  console.log(`📍 Path with ${pathToFollow.length} waypoints: ${routeWaypoints.join(" → ")}`);
+  console.log(`📍 Total internal distance: ${pathDistance.toFixed(1)}m`);
   console.log(`📍 Section: ${routeDescription}`);
   
   return {
     nearestPathPoint: nearestPathLatLng,
     internalPath: pathToFollow,
     directDistance: pathDistance,
-    segmentIndex: segmentIndex,
-    section: routeDescription
+    segmentIndex: adjustedSegmentIndex,
+    section: routeDescription,
+    waypoints: routeWaypoints,
   };
 };
 
