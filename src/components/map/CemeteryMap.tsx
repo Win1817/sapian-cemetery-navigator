@@ -1020,27 +1020,29 @@ const CemeteryMap = ({
 
       {/* --- Navigation Ready/View Route Button Card (Above Grave Details) --- */}
       {selectedGrave && userLocation && routeLineRef.current && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[1100] pointer-events-none w-full px-2 sm:px-4">
-          <div className="pointer-events-auto max-w-md mx-auto">
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-3 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
-              <button
-                onClick={() => setSelectedGrave(null)}
-                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1 sm:p-1.5 rounded transition flex-shrink-0 self-end sm:self-auto"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4 sm:h-5 sm:w-5" />
-              </button>
-              <div className="flex-1 text-left">
-                <p className="text-xs text-gray-500 font-medium">
-                  Navigation ready to
-                </p>
-                <p className="font-bold text-base sm:text-lg truncate">
-                  {selectedGrave.grave_name}
-                </p>
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[1100] pointer-events-none w-full px-2 sm:px-4">
+          <div className="pointer-events-auto max-w-sm mx-auto">
+            <div className="bg-white rounded-lg sm:rounded-xl shadow-lg p-2 sm:p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-xs text-gray-500 font-medium">
+                    Navigation ready to
+                  </p>
+                  <p className="font-bold text-sm sm:text-base break-words">
+                    {selectedGrave.grave_name}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedGrave(null)}
+                  className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 p-1 rounded transition flex-shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
               <button
                 onClick={() => setIsRouteCardVisible(true)}
-                className="w-full sm:w-auto bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-4 sm:px-8 py-2 sm:py-3 rounded-lg sm:rounded-xl shadow-lg text-sm sm:text-lg transition-all"
+                className="w-full bg-[#2d5f3f] hover:bg-[#1e3f2a] text-white font-bold px-4 py-2 rounded-lg shadow text-sm transition-all"
               >
                 View Route
               </button>
