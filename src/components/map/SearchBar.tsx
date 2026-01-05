@@ -51,10 +51,10 @@ const SearchBar = ({ onSelectGrave }: SearchBarProps) => {
   };
 
   return (
-    <div className="relative w-full max-w-md">
+    <div className="relative w-full sm:max-w-md">
       <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-          <Search className="w-5 h-5 text-gray-400" />
+        <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+          <Search className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
         </div>
 
         <Input
@@ -64,7 +64,7 @@ const SearchBar = ({ onSelectGrave }: SearchBarProps) => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onFocus={() => searchTerm && setShowResults(true)}
-          className="pl-12 sm:pl-14 map-search"
+          className="pl-9 sm:pl-12 text-sm sm:text-base map-search"
         />
       </div>
 
