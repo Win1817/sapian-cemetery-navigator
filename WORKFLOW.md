@@ -36,7 +36,7 @@ This flowchart illustrates the primary paths a user can take through the applica
                   [View Grave Details]
                            |
                            v
-      (Do you want navigation?) --(Yes)--> [Enable Location] --> [Route is Drawn on Map]
+      (Do you want navigation?) --(Yes)--> [Enable Location] --> [Route is Drawn on Map] --> [Navigate Going to the Grave]
                            |
                           (No)
                            |
