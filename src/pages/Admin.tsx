@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Leaf,
   LogOut,
   Plus,
   Download,
@@ -805,11 +804,10 @@ const Admin = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100" />
-        <div className="text-center relative z-10">
-          <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <Leaf className="w-8 h-8 text-primary-foreground" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse overflow-hidden">
+            <img src="/Logo.png" alt="Logo" className="w-10 h-10 object-contain" />
           </div>
           <p className="text-muted-foreground">Loading admin panel...</p>
         </div>
@@ -818,19 +816,12 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-100">
-        <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.1) 1px, transparent 0)`,
-          backgroundSize: "50px 50px",
-        }} />
-      </div>
-
+    <div className="min-h-screen">
       <header className="bg-card shadow-soft border-b relative z-10">
         <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center overflow-hidden">
+              <img src="/Logo.png" alt="Logo" className="w-8 h-8 sm:w-10 sm:h-10 object-contain" />
             </div>
             <div className="leading-tight">
               <h1 className="text-xl sm:text-2xl font-serif font-bold">Admin Dashboard</h1>

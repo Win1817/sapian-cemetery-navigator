@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Leaf } from "lucide-react";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -107,13 +106,10 @@ const Auth = () => {
           />
         </div>
         <div className="absolute top-20 left-10 w-12 h-12 text-emerald-200 opacity-30 animate-pulse">
-          <Leaf className="w-full h-full" />
         </div>
         <div className="absolute bottom-32 right-20 w-16 h-16 text-green-200 opacity-20 rotate-12">
-          <Leaf className="w-full h-full" />
         </div>
         <div className="absolute top-1/2 left-1/4 w-8 h-8 text-teal-200 opacity-25 -rotate-6">
-          <Leaf className="w-full h-full" />
         </div>
       </div>
 
@@ -121,9 +117,7 @@ const Auth = () => {
       <Card className="w-full max-w-md relative z-10 shadow-xl bg-white/90 backdrop-blur-sm border-0">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center">
-            <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center">
-              <Leaf className="w-8 h-8 text-primary-foreground" />
-            </div>
+            <img src="/Logo.png" alt="Sapian Cemetery Logo" className="w-16 h-16" />
           </div>
           <CardTitle className="text-3xl font-serif text-gray-800">Sapian Cemetery</CardTitle>
           <CardDescription className="text-gray-600">Navigation & Grave Locator</CardDescription>

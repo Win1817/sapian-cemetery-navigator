@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import CemeteryMap, { MapPolygon } from "@/components/map/CemeteryMap";
 import SearchBar from "@/components/map/SearchBar";
-import { Leaf, MapPin, Settings } from "lucide-react";
+import { MapPin, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { MAP_CONFIG } from "@/components/map/mapConfig";
 
@@ -239,13 +239,13 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden">
+    <div className="min-h-screen flex flex-col relative">
       {/* Header */}
       <header className="bg-card shadow-soft border-b z-20 relative w-full">
         <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center overflow-hidden">
+              <img src="/Logo.png" alt="Logo" className="w-8 h-8 sm:w-10 sm:h-10 object-contain" />
             </div>
             <div className="leading-tight">
               <h1 className="text-xl sm:text-2xl font-serif font-bold">Sapian Cemetery</h1>
